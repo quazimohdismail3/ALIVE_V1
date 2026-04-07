@@ -1,0 +1,111 @@
+:root {
+  /* Background */
+  --bg-deep:         #060A0E;
+  --bg-surface:      #0C1218;
+  --bg-elevated:     #121C28;
+
+  /* ANS state colors — drive everything tied to state */
+  --ventral:         #00C9A7;
+  --sympathetic-h:   #F5A623;
+  --sympathetic-a:   #E8622A;
+  --dorsal:          #4A7FA5;
+  --burnout:         #7B5EA7;
+
+  /* Text */
+  --text-primary:    #E8EDF2;
+  --text-secondary:  #5A6A7A;
+  --text-ghost:      #2A3444;
+
+  --accent:          #00C9A7;
+
+  /* Current state color — overridden at runtime */
+  --state:           var(--ventral);
+
+  /* Type */
+  --font-display: 'DM Serif Display', Georgia, serif;
+  --font-body:    'DM Sans', system-ui, sans-serif;
+  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+}
+
+* { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+html, body, #root { height: 100%; margin: 0; padding: 0; }
+body {
+  background: var(--bg-deep);
+  color: var(--text-primary);
+  font-family: var(--font-body);
+  font-size: 15px;
+  line-height: 1.5;
+  -webkit-font-smoothing: antialiased;
+  overscroll-behavior: none;
+  touch-action: manipulation;
+}
+button { font-family: inherit; cursor: pointer; border: none; }
+input, textarea { font-family: inherit; }
+
+.app { min-height: 100%; display: flex; flex-direction: column; max-width: 430px; margin: 0 auto; }
+
+/* Screens — fade transition */
+.screen { flex: 1; opacity: 0; transform: translateY(8px); animation: enter 400ms ease forwards; padding: 24px 20px 40px; }
+@keyframes enter { to { opacity: 1; transform: translateY(0); } }
+
+/* Breathe */
+@keyframes breathe {
+  0%, 100% { transform: scale(1.0); }
+  50% { transform: scale(1.08); }
+}
+.breathe { animation: breathe 4s ease-in-out infinite; }
+
+.display { font-family: var(--font-display); }
+.mono { font-family: var(--font-mono); }
+.ghost { color: var(--text-ghost); }
+.secondary { color: var(--text-secondary); }
+
+.btn {
+  width: 100%;
+  height: 56px;
+  border-radius: 12px;
+  background: var(--state);
+  color: var(--bg-deep);
+  font-weight: 500;
+  font-size: 15px;
+  transition: opacity 200ms ease, transform 200ms ease;
+}
+.btn:disabled { opacity: 0.3; }
+.btn:active:not(:disabled) { transform: scale(0.98); }
+.btn-ghost {
+  background: transparent;
+  color: var(--text-secondary);
+  border: 1px solid var(--text-ghost);
+}
+
+.pill {
+  padding: 8px 14px;
+  border-radius: 999px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  font-size: 13px;
+  border: 1px solid transparent;
+  transition: all 300ms ease;
+}
+.pill.active { color: var(--state); border-color: var(--state); }
+
+.card {
+  background: var(--bg-surface);
+  border-radius: 14px;
+  padding: 16px;
+  border-left: 4px solid var(--state);
+}
+
+/* State color transitions should always be slow */
+.state-color { transition: color 1200ms ease, background 1200ms ease, border-color 1200ms ease, fill 1200ms ease, stroke 1200ms ease; }
+
+/* Param bar */
+.param-bar { height: 3px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; }
+.param-bar > span { display: block; height: 100%; background: var(--state); transition: width 600ms ease-in-out; }
+
+/* State color hooks — set data-state on root to switch */
+[data-state="ventral_vagal"]       { --state: var(--ventral); }
+[data-state="healthy_sympathetic"]  { --state: var(--sympathetic-h); }
+[data-state="anxious_sympathetic"]  { --state: var(--sympathetic-a); }
+[data-state="dorsal_vagal"]         { --state: var(--dorsal); }
+[data-state="burnout_rigidity"]     { --state: var(--burnout); }
