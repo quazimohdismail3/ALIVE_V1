@@ -1,0 +1,69 @@
+# Mission Alive .gitignore — audited every commit, never relax
+
+# Secrets — NEVER commit
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+secrets/
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+*.egg
+*.egg-info/
+.Python
+build/
+dist/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+vagus_env/
+venv/
+env/
+.venv/
+
+# Node / Vite
+node_modules/
+dist/
+.vite/
+*.log
+npm-debug.log*
+yarn-debug.log*
+pnpm-debug.log*
+
+# Claude Code local state
+.claude/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Windows shell artifacts
+cmd
+cmd/
+*.cmd
+
+# SQLite databases (local data)
+*.db
+*.sqlite
+*.sqlite3
+mission_alive.db
+
+# Build / cache
+.cache/
+.parcel-cache/
+
+# Logs
+logs/
+*.log
