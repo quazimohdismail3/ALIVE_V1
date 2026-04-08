@@ -2,6 +2,7 @@ import React, { useEffect, useRef, useState } from 'react'
 import { ToneEngine } from '../engines/toneEngine.js'
 import { PolarH10BLE } from '../engines/polarH10BLE.js'
 import { WhoopBLE } from '../engines/whoopBLE.js'
+import { store } from '../store/sessionStore.js'
 
 const STATE_MESSAGES = {
   ventral_vagal: "You're here.",
@@ -35,6 +36,8 @@ export default function MainSession({ selection, setAnsState, onExit }) {
   const toneRef = useRef(null)
   const bleRef = useRef(null)
   const wsRef = useRef(null)
+  const startFrameRef = useRef(null)
+  const frameRef = useRef(null)
 
   useEffect(() => {
     let cancelled = false
@@ -48,7 +51,8 @@ export default function MainSession({ selection, setAnsState, onExit }) {
       // WebSocket
       const proto = location.protocol === 'https:' ? 'wss' : 'ws'
       const host = location.host
-      const url = `${proto}://${host}/ws/session?session=${selection.session}&mode=${selection.sensor_mode}&duration_s=${selection.duration_s}`
+      const userId = store.get().user_id
+      const url = `${proto}://${host}/ws/session?session=${selection.session}&mode=${selection.sensor_mode}&duration_s=${selection.duration_s}&user_id=${encodeURIComponent(userId)}`
       const ws = new WebSocket(url)
       wsRef.current = ws
 
@@ -56,7 +60,8 @@ export default function MainSession({ selection, setAnsState, onExit }) {
         if (cancelled) return
         const msg = JSON.parse(ev.data)
         if (msg.status === 'buffering' || msg.error) return
-        if (!startFrame) setStartFrame(msg)
+        if (!startFrameRef.current) { startFrameRef.current = msg; setStartFrame(msg) }
+        frameRef.current = msg
         setFrame(msg)
         if (msg.state) {
           setHrvSeries(prev => {
@@ -73,7 +78,7 @@ export default function MainSession({ selection, setAnsState, onExit }) {
         }
       }
 
-      ws.onclose = () => { if (!cancelled) onExit(startFrame, frame) }
+      ws.onclose = () => { if (!cancelled) onExit(startFrameRef.current, frameRef.current) }
 
       // Real sensor connection
       if (selection.sensor_mode === 'polar') {
@@ -113,7 +118,7 @@ export default function MainSession({ selection, setAnsState, onExit }) {
       <div style={{ display: 'flex', justifyContent: 'space-between', padding: '16px 20px', fontSize: 12 }}>
         <span className="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}>{selection.session}</span>
         <span className="mono">{mins}:{secs}</span>
-        <button className="secondary" style={{ background: 'none', color: 'var(--text-secondary)' }} onClick={() => { wsRef.current?.close(); onExit(startFrame, frame) }}>✕</button>
+        <button className="secondary" style={{ background: 'none', color: 'var(--text-secondary)' }} onClick={() => { wsRef.current?.close(); onExit(startFrameRef.current, frameRef.current) }}>✕</button>
       </div>
 
       {/* Central circle */}
