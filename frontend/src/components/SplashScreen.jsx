@@ -48,12 +48,14 @@ function VagusNerveAnimated() {
           <stop offset="50%"  stopColor="#00C9A7" />
           <stop offset="100%" stopColor="#4A7FA5" />
         </linearGradient>
-        <path id="vna-trunk"     d="M110,15 C130,55 90,85 110,120 C130,155 90,185 110,215" fill="transparent" />
-        <path id="vna-cranial-l" d="M110,30 Q80,42 72,60" fill="transparent" />
-        <path id="vna-cranial-r" d="M110,30 Q140,42 148,60" fill="transparent" />
-        <path id="vna-heart-l"   d="M110,88 Q78,98 62,112" fill="transparent" />
-        <path id="vna-lung-r"    d="M110,105 Q145,112 162,130" fill="transparent" />
-        <path id="vna-gut-l"     d="M110,215 Q70,242 56,258" fill="transparent" />
+        <path id="vna-trunk"     d="M110,15 C130,55 90,85 110,120 C130,155 90,185 110,215" fill="none" />
+        <path id="vna-cranial-l" d="M110,30 Q80,42 72,60" fill="none" />
+        <path id="vna-cranial-r" d="M110,30 Q140,42 148,60" fill="none" />
+        <path id="vna-heart-l"   d="M110,88 Q78,98 62,112" fill="none" />
+        <path id="vna-lung-r"    d="M110,105 Q145,112 162,130" fill="none" />
+        <path id="vna-gut-l"     d="M110,215 Q70,242 56,258" fill="none" />
+        <path id="vna-heart-r"   d="M110,88 Q142,96 158,112" fill="none" />
+        <path id="vna-lung-l"    d="M110,105 Q75,115 58,132" fill="none" />
       </defs>
 
       <circle cx="110" cy="140" r="108" fill="url(#vna-halo)" />
@@ -83,38 +85,50 @@ function VagusNerveAnimated() {
       <path d="M110,215 Q150,242 164,258" stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.70" strokeLinecap="round" />
 
       <circle r="2" fill="#6EE7D2" opacity="0.9">
-        <animateMotion dur="7s" repeatCount="indefinite" begin="0s" calcMode="linear">
+        <animateMotion dur="7s" repeatCount="indefinite" begin="0s" calcMode="paced">
           <mpath href="#vna-trunk" />
         </animateMotion>
       </circle>
 
       <circle r="1.5" fill="#00C9A7" opacity="0.85">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="1.5s" calcMode="linear">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="1.5s" calcMode="paced">
           <mpath href="#vna-heart-l" />
         </animateMotion>
       </circle>
 
       <circle r="1.5" fill="#4A7FA5" opacity="0.80">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="2.8s" calcMode="linear">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="2.8s" calcMode="paced">
           <mpath href="#vna-lung-r" />
         </animateMotion>
       </circle>
 
       <circle r="1.5" fill="#00C9A7" opacity="0.75">
-        <animateMotion dur="3s" repeatCount="indefinite" begin="1s" calcMode="linear">
+        <animateMotion dur="3s" repeatCount="indefinite" begin="1s" calcMode="paced">
           <mpath href="#vna-gut-l" />
         </animateMotion>
       </circle>
 
       <circle r="1.2" fill="#6EE7D2" opacity="0.70">
-        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0s" calcMode="linear">
+        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0s" calcMode="paced">
           <mpath href="#vna-cranial-l" />
         </animateMotion>
       </circle>
 
       <circle r="1.2" fill="#6EE7D2" opacity="0.70">
-        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0.6s" calcMode="linear">
+        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0.6s" calcMode="paced">
           <mpath href="#vna-cranial-r" />
+        </animateMotion>
+      </circle>
+
+      <circle r="1.5" fill="#00C9A7" opacity="0.75">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="0.8s" calcMode="paced">
+          <mpath href="#vna-heart-r" />
+        </animateMotion>
+      </circle>
+
+      <circle r="1.5" fill="#4A7FA5" opacity="0.75">
+        <animateMotion dur="2.5s" repeatCount="indefinite" begin="3.5s" calcMode="paced">
+          <mpath href="#vna-lung-l" />
         </animateMotion>
       </circle>
 
