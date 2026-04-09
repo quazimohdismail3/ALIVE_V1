@@ -42,6 +42,7 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
   const [beaconStale, setBeaconStale] = useState(false)
   const [beatKey, setBeatKey] = useState(0)
   const [beatMs, setBeatMs] = useState(1000)
+  const [showExitModal, setShowExitModal] = useState(false)
   const toneRef = useRef(null)
   const bleRef = useRef(null)
   const wsRef = useRef(null)
@@ -162,14 +163,11 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
       {/* Header */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '16px 20px', fontSize: 12 }}>
         <button
-          onClick={() => {
-            if (window.confirm('End session and return to dashboard?')) {
-              wsRef.current?.close()
-              onExit(startFrameRef.current, frameRef.current)
-            }
-          }}
-          style={{ background: 'none', color: 'var(--text-secondary)', border: 'none', cursor: 'pointer', fontSize: 18 }}
-          aria-label="Back"
+          onClick={() => setShowExitModal(true)}
+          style={{ background: 'none', color: 'var(--text-secondary)', border: 'none',
+                   cursor: 'pointer', fontSize: 18, minWidth: 44, minHeight: 44,
+                   display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+          aria-label="End session"
         >←</button>
         <span className="secondary" style={{ textTransform: 'uppercase', letterSpacing: '0.1em' }}>{selection.session}</span>
         <span className="mono">{mins}:{secs}</span>
@@ -222,13 +220,62 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
                     <div className="param-bar">
                       <span style={{ width: `${normParam(p, val) * 100}%` }} />
                     </div>
-                    <div className="secondary mono" style={{ fontSize: 8, marginTop: 2, textAlign: 'center', opacity: 0.5 }}>{PARAM_SHORT[p]}</div>
+                    <div className="secondary mono" style={{ fontSize: 10, marginTop: 2, textAlign: 'center', opacity: 0.5 }}>{PARAM_SHORT[p]}</div>
                   </div>
                 )
               })}
             </div>
           </div>
         ))}
+      </div>
+
+      {showExitModal && (
+        <ExitConfirmModal
+          onConfirm={() => {
+            setShowExitModal(false)
+            wsRef.current?.close()
+            // ws.onclose calls onExit — do NOT call it here directly
+          }}
+          onCancel={() => setShowExitModal(false)}
+        />
+      )}
+    </div>
+  )
+}
+
+function ExitConfirmModal({ onConfirm, onCancel }) {
+  return (
+    <div
+      onClick={onCancel}
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+        zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+        animation: 'enter 200ms ease forwards',
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: '100%', maxWidth: 430,
+          background: 'var(--bg-surface)',
+          borderTopLeftRadius: 20, borderTopRightRadius: 20,
+          padding: '24px 20px 40px',
+        }}
+      >
+        <div style={{
+          width: 40, height: 4, background: 'var(--text-ghost)',
+          borderRadius: 2, margin: '0 auto 20px',
+        }} />
+        <div className="display" style={{ fontSize: 18, marginBottom: 8 }}>End session?</div>
+        <div className="secondary" style={{ fontSize: 13, marginBottom: 28, lineHeight: 1.5 }}>
+          Your progress will be saved up to this point.
+        </div>
+        <button className="btn state-color" style={{ marginBottom: 10, minHeight: 44 }} onClick={onConfirm}>
+          End &amp; save
+        </button>
+        <button className="btn btn-ghost state-color" style={{ minHeight: 44 }} onClick={onCancel}>
+          Keep going
+        </button>
       </div>
     </div>
   )
