@@ -205,8 +205,8 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
       </div>
 
       {/* HRV trend strip */}
-      <div style={{ padding: '0 20px', height: 56 }}>
-        <HrvTrend series={hrvSeries} />
+      <div style={{ padding: '0 20px', marginBottom: 4 }}>
+        <HrvChart series={hrvSeries} />
       </div>
 
       {/* Music params */}
@@ -462,23 +462,75 @@ function MpcMini({ score }) {
   )
 }
 
-function HrvTrend({ series }) {
+function HrvChart({ series }) {
   if (!series.length) return null
-  const w = 350, h = 56
-  const min = Math.min(...series), max = Math.max(...series)
+  const w = 350, h = 80
+  const min = Math.min(...series)
+  const max = Math.max(...series)
   const range = Math.max(max - min, 1)
-  const pts = series.map((v, i) => {
-    const x = (i / (series.length - 1 || 1)) * w
-    const y = h - ((v - min) / range) * h * 0.9 - h * 0.05
-    return `${x},${y}`
-  }).join(' ')
+  const lastVal = series[series.length - 1]
+
+  const zone = lastVal >= 50 ? 'optimal' : lastVal >= 30 ? 'building' : 'low'
+  const zoneColor = lastVal >= 50 ? '#00C9A7' : lastVal >= 30 ? '#F5A623' : '#E8622A'
+  const zoneOpacity = lastVal >= 50 ? 0.12 : 0.10
+
+  const pts = series.map((v, i) => ({
+    x: (i / (series.length - 1 || 1)) * w,
+    y: h - ((v - min) / range) * h * 0.82 - h * 0.09,
+  }))
+
+  // Smooth cubic bezier path
+  let curvePath = `M ${pts[0].x},${pts[0].y}`
+  for (let i = 1; i < pts.length; i++) {
+    const prev = pts[i - 1]
+    const curr = pts[i]
+    const midX = (prev.x + curr.x) / 2
+    curvePath += ` C ${midX},${prev.y} ${midX},${curr.y} ${curr.x},${curr.y}`
+  }
+  const fillPath = `${curvePath} L ${pts[pts.length - 1].x},${h} L 0,${h} Z`
+  const lastPt = pts[pts.length - 1]
+
   return (
     <div style={{ position: 'relative' }}>
-      <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`} preserveAspectRatio="none">
-        <polyline fill="none" stroke="var(--state)" strokeWidth="1.5" points={pts} className="state-color" />
+      <svg
+        width="100%" height={h}
+        viewBox={`0 0 ${w} ${h}`}
+        preserveAspectRatio="none"
+        role="img"
+        aria-label={`HRV trend — ${zone}, ${Math.round(lastVal)} ms RMSSD`}
+      >
+        <defs>
+          <linearGradient id="hrv-fill-grad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"   stopColor="var(--state)" stopOpacity="0.30" />
+            <stop offset="100%" stopColor="var(--state)" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+
+        {/* Zone background */}
+        <rect x="0" y="0" width={w} height={h} fill={zoneColor} opacity={zoneOpacity} rx="4" />
+
+        {/* Gradient fill */}
+        <path d={fillPath} fill="url(#hrv-fill-grad)" />
+
+        {/* Smooth curve */}
+        <path d={curvePath} fill="none" stroke="var(--state)" strokeWidth="1.5"
+          strokeLinecap="round" className="state-color" />
+
+        {/* Live dot at end */}
+        <circle
+          cx={lastPt.x} cy={lastPt.y} r="3"
+          fill="var(--state)" className="state-color"
+          style={{ filter: 'drop-shadow(0 0 4px var(--state))' }}
+        />
       </svg>
-      <div className="secondary mono" style={{ position: 'absolute', top: 0, right: 4, fontSize: 8, opacity: 0.5 }}>{Math.round(max)}</div>
-      <div className="secondary mono" style={{ position: 'absolute', bottom: 0, right: 4, fontSize: 8, opacity: 0.5 }}>{Math.round(min)}</div>
+
+      {/* Zone label */}
+      <div className="secondary mono" style={{
+        position: 'absolute', bottom: 3, left: 4,
+        fontSize: 10, opacity: 0.6, pointerEvents: 'none',
+      }}>
+        {zone} · {Math.round(lastVal)}ms
+      </div>
     </div>
   )
 }
