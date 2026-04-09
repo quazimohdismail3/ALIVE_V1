@@ -14,7 +14,7 @@
   /* Text */
   --text-primary:    #E8EDF2;
   --text-secondary:  #8A9BAB;
-  --text-ghost:      #3D5068;
+  --text-ghost:      #637A8F;   /* ~4.5:1 on --bg-deep; decorative de-emphasis */
 
   --accent:          #00C9A7;
 
@@ -41,6 +41,11 @@ body {
 }
 button { font-family: inherit; cursor: pointer; border: none; }
 input, textarea { font-family: inherit; }
+
+:focus-visible {
+  outline: 2px solid var(--state);
+  outline-offset: 3px;
+}
 
 .app { min-height: 100%; display: flex; flex-direction: column; max-width: 430px; margin: 0 auto; }
 
@@ -72,10 +77,6 @@ input, textarea { font-family: inherit; }
 }
 .btn:disabled { opacity: 0.3; }
 .btn:active:not(:disabled) { transform: scale(0.98); }
-:focus-visible {
-  outline: 2px solid var(--state);
-  outline-offset: 3px;
-}
 .btn-ghost {
   background: transparent;
   color: var(--text-secondary);
