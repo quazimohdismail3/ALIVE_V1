@@ -1,14 +1,13 @@
 import React, { useEffect } from 'react'
 import { store } from '../store/sessionStore.js'
 
-export default function SessionEnd({ selection, startFrame, endFrame, onReturn }) {
+export default function SessionEnd({ selection, startFrame, endFrame, onReturn, onNewSession }) {
   const rmStart = startFrame?.metrics?.rmssd ?? 0
   const rmEnd = endFrame?.metrics?.rmssd ?? rmStart
   const delta = rmEnd - rmStart
-  const arStart = startFrame?.state?.arousal ?? 0
-  const arEnd = endFrame?.state?.arousal ?? arStart
+  const arStart = startFrame?.state?.arousal ?? startFrame?.arousal ?? 0
+  const arEnd = endFrame?.state?.arousal ?? endFrame?.arousal ?? arStart
 
-  // Generate local insight (fallback; backend writes its own to db)
   const insight = deriveInsight(selection.session, delta, arEnd - arStart)
 
   useEffect(() => {
@@ -25,46 +24,89 @@ export default function SessionEnd({ selection, startFrame, endFrame, onReturn }
   }, [])
 
   return (
-    <div className="screen">
-      <div className="display" style={{ fontSize: 26, textAlign: 'center', marginTop: 48 }}>Session complete.</div>
+    <div className="screen cosmic-bg dim" style={{ minHeight: '100dvh', padding: '64px 24px 40px' }}>
+      <div className="display" style={{ fontSize: 24, textAlign: 'center', letterSpacing: '-0.01em' }}>Session complete.</div>
 
-      <div className="card state-color" style={{ marginTop: 32, padding: 20 }}>
-        <div style={{ display: 'flex', justifyContent: 'space-around' }}>
-          <Column label="Start" rm={rmStart} ar={arStart} />
-          <div style={{ fontSize: 24, alignSelf: 'center', color: delta >= 0 ? 'var(--ventral)' : 'var(--sympathetic-a)' }}>
-            {delta >= 0 ? '↑' : '↓'}
-          </div>
-          <Column label="End" rm={rmEnd} ar={arEnd} />
-        </div>
-        <div className="mono secondary" style={{ fontSize: 11, marginTop: 16, textAlign: 'center' }}>
-          Δ {delta >= 0 ? '+' : ''}{delta.toFixed(1)}ms · {Math.round(selection.duration_s / 60)} min · {selection.sensor_mode}
-        </div>
+      {/* Delta hero */}
+      <div style={{ display: 'flex', justifyContent: 'center', marginTop: 36, marginBottom: 28 }}>
+        <DeltaRing start={rmStart} end={rmEnd} />
       </div>
 
-      <div className="display" style={{
-        marginTop: 32,
-        fontSize: 16,
-        fontStyle: 'italic',
+      <div style={{ display: 'flex', justifyContent: 'space-around', alignItems: 'center', marginBottom: 28 }}>
+        <Stat label="Start" value={rmStart} unit="ms" sub="rmssd" />
+        <div style={{ fontSize: 28, color: delta >= 0 ? 'var(--ventral)' : 'var(--sympathetic-a)' }}>
+          {delta >= 0 ? '↑' : '↓'}
+        </div>
+        <Stat label="End" value={rmEnd} unit="ms" sub="rmssd" />
+      </div>
+
+      <div className="mono secondary" style={{ fontSize: 11, textAlign: 'center', marginBottom: 32 }}>
+        Δ {delta >= 0 ? '+' : ''}{delta.toFixed(1)}ms · {Math.round(selection.duration_s / 60)} min · {selection.sensor_mode}
+      </div>
+
+      <div style={{
+        background: 'rgba(255,255,255,0.02)',
+        border: '1px solid rgba(255,255,255,0.05)',
         borderLeft: '3px solid var(--state)',
-        paddingLeft: 16,
+        borderRadius: 10,
+        padding: '18px 18px 20px',
+        marginBottom: 36,
       }}>
-        {insight}
+        <div className="secondary" style={{ fontSize: 9, letterSpacing: '0.18em', marginBottom: 8 }}>INSIGHT</div>
+        <div className="display" style={{ fontSize: 16, fontStyle: 'italic', lineHeight: 1.4 }}>{insight}</div>
       </div>
 
-      <button className="btn state-color" style={{ marginTop: 40 }} onClick={onReturn}>Save & Return</button>
+      <button className="btn state-color" onClick={onReturn}>Save & return</button>
+      <button className="btn btn-ghost state-color" style={{ marginTop: 10 }} onClick={onNewSession}>New session</button>
     </div>
   )
 }
 
-function Column({ label, rm, ar }) {
+function Stat({ label, value, unit, sub }) {
   return (
     <div style={{ textAlign: 'center' }}>
-      <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.15em' }}>{label.toUpperCase()}</div>
-      <div className="mono" style={{ fontSize: 18, marginTop: 6 }}>{rm.toFixed(0)}</div>
-      <div className="secondary" style={{ fontSize: 10 }}>rmssd</div>
-      <div className="mono" style={{ fontSize: 12, marginTop: 8 }}>{ar.toFixed(2)}</div>
-      <div className="secondary" style={{ fontSize: 10 }}>arousal</div>
+      <div className="secondary" style={{ fontSize: 9, letterSpacing: '0.15em' }}>{label.toUpperCase()}</div>
+      <div className="mono" style={{ fontSize: 22, marginTop: 6 }}>
+        {Math.round(value)}<span className="secondary" style={{ fontSize: 10, marginLeft: 3 }}>{unit}</span>
+      </div>
+      <div className="secondary" style={{ fontSize: 9, marginTop: 2 }}>{sub}</div>
     </div>
+  )
+}
+
+function DeltaRing({ start, end }) {
+  // Simple ring chart: outer = end RMSSD, inner faint = start.
+  // Scale to a 0–100ms reference window.
+  const REF = 100
+  const sPct = Math.max(0, Math.min(1, start / REF))
+  const ePct = Math.max(0, Math.min(1, end / REF))
+  const r = 64
+  const c = 2 * Math.PI * r
+  return (
+    <svg width="180" height="180" viewBox="0 0 180 180">
+      <circle cx="90" cy="90" r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="6" />
+      <circle
+        cx="90" cy="90" r={r} fill="none"
+        stroke="rgba(255,255,255,0.18)" strokeWidth="3"
+        strokeDasharray={`${sPct * c} ${c}`}
+        transform="rotate(-90 90 90)"
+        strokeLinecap="round"
+      />
+      <circle
+        cx="90" cy="90" r={r} fill="none"
+        stroke="var(--state)" strokeWidth="6"
+        strokeDasharray={`${ePct * c} ${c}`}
+        transform="rotate(-90 90 90)"
+        strokeLinecap="round"
+        className="state-color"
+      />
+      <text x="90" y="92" textAnchor="middle" className="mono" style={{ fontSize: 28, fill: 'var(--text-primary)' }}>
+        {Math.round(end)}
+      </text>
+      <text x="90" y="110" textAnchor="middle" className="mono" style={{ fontSize: 9, fill: 'var(--text-secondary)', letterSpacing: '0.15em' }}>
+        RMSSD MS
+      </text>
+    </svg>
   )
 }
 
