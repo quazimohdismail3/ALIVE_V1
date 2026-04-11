@@ -1,7 +1,13 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion, AnimatePresence } from 'framer-motion'
+import { useApp } from '../context/AppContext.jsx'
 import { PolarH10BLE } from '../engines/polarH10BLE.js'
 import { WhoopBLE } from '../engines/whoopBLE.js'
 import { store } from '../store/sessionStore.js'
+import CosmicBackground from './CosmicBackground.jsx'
+import FlowingWaves from './FlowingWaves.jsx'
+import '../styles/connect.css'
 
 const MIN_RR_TO_CONTINUE = 8
 
@@ -9,40 +15,45 @@ const SENSORS = [
   {
     id: 'polar',
     name: 'Polar H10',
-    sub: 'Chest strap · RR-grade',
+    sub: 'Chest strap · RR-grade precision',
     needsBle: true,
-    icon: PolarIcon,
+    icon: '❤️',
+    cls: 'polar',
   },
   {
     id: 'whoop',
-    name: 'WHOOP',
-    sub: 'Wrist strap · BLE',
+    name: 'WHOOP Strap',
+    sub: 'Your daily baseline',
     needsBle: true,
-    icon: WhoopIcon,
+    icon: '⌚',
+    cls: 'whoop',
   },
   {
     id: 'simulator',
     name: 'Simulator',
     sub: 'No device · demo mode',
     needsBle: false,
-    icon: SimIcon,
+    icon: '〜',
+    cls: 'sim',
   },
 ]
 
-export default function ConnectScreen({ onBack, onContinue }) {
+const ease = [0.16, 1, 0.3, 1]
+
+export default function ConnectScreen() {
+  const navigate = useNavigate()
+  const { setBle, setSensorMode } = useApp()
+
   const [selected, setSelected] = useState(store.get().sensor_mode || 'simulator')
-  const [bleStatus, setBleStatus] = useState({ status: 'idle', error: null, rrCount: 0 })
+  const [bleStatus, setBleStatus] = useState({ status: 'idle', phase: '', error: null, rrCount: 0 })
   const bleRef = useRef(null)
 
-  // Secure context check — Web Bluetooth requires HTTPS or localhost.
   const webBtOk = typeof navigator !== 'undefined'
     && typeof window !== 'undefined'
     && window.isSecureContext
     && !!navigator.bluetooth
 
-  // Clean up any lingering BLE instance if the user switches sensors.
   useEffect(() => () => {
-    // on unmount, if we built a BLE that wasn't handed off, disconnect it.
     if (bleRef.current && !bleRef.current.__handedOff) {
       bleRef.current.disconnect?.()
     }
@@ -55,10 +66,7 @@ export default function ConnectScreen({ onBack, onContinue }) {
   }
 
   const handlePickSensor = (id) => {
-    // Tear down previous BLE if any
-    if (bleRef.current && bleRef.current !== null) {
-      try { bleRef.current.disconnect?.() } catch {}
-    }
+    if (bleRef.current) { try { bleRef.current.disconnect?.() } catch {} }
     bleRef.current = null
     setBleStatus({ status: 'idle', error: null, rrCount: 0 })
     setSelected(id)
@@ -69,17 +77,14 @@ export default function ConnectScreen({ onBack, onContinue }) {
     if (!selected || selected === 'simulator') return
     const ble = buildBle(selected)
     bleRef.current = ble
-    // PolarH10BLE has a rich status listener; WhoopBLE doesn't yet.
     if (ble.onStatusChange) {
       ble.onStatusChange(setBleStatus)
     } else {
       setBleStatus({ status: 'requesting', error: null, rrCount: 0 })
     }
     try {
-      // Temporary sink until the session/dashboard re-points onRr.
       await ble.connect(
         () => {
-          // for WhoopBLE (no listener), count RRs manually
           if (!ble.onStatusChange) {
             setBleStatus(s => ({ ...s, status: 'connected', rrCount: (s.rrCount || 0) + 1 }))
           }
@@ -102,126 +107,183 @@ export default function ConnectScreen({ onBack, onContinue }) {
 
   const goContinue = () => {
     if (bleRef.current) bleRef.current.__handedOff = true
-    onContinue({ sensor_mode: selected, ble: bleRef.current })
+    setSensorMode(selected)
+    setBle(bleRef.current)
+    navigate('/calibrate')
+  }
+
+  // Phase-specific button label
+  const connectBtnLabel = () => {
+    if (bleStatus.status === 'connected') return '● Connected'
+    if (bleStatus.status === 'requesting') {
+      if (bleStatus.phase === 'connecting') return 'Connecting to device…'
+      if (bleStatus.phase === 'subscribing') return 'Subscribing to HR…'
+      return 'Searching…'
+    }
+    if (bleStatus.status === 'error') return 'Retry connect'
+    return `Pair ${sensorMeta?.name}`
+  }
+
+  // Phase-specific status sub-text
+  const statusText = () => {
+    if (bleStatus.status === 'connected')
+      return `RR received: ${bleStatus.rrCount}${bleStatus.rrCount >= MIN_RR_TO_CONTINUE ? ' ✓' : ` / ${MIN_RR_TO_CONTINUE}`}`
+    if (bleStatus.status === 'error')
+      return <span style={{ color: 'var(--accent-rose)', whiteSpace: 'pre-wrap' }}>{bleStatus.error || 'Connection failed'}</span>
+    if (bleStatus.status === 'requesting') {
+      if (bleStatus.phase === 'discovering') return 'Select your Polar H10 from the list above'
+      if (bleStatus.phase === 'connecting') return 'Selected — opening GATT channel…'
+      if (bleStatus.phase === 'subscribing') return 'Enabling RR notifications…'
+    }
+    if (bleStatus.status === 'disconnected') return 'Disconnected'
+    return 'Wet electrodes · wear strap · tap Pair'
   }
 
   return (
-    <div className="screen cosmic-bg dim" style={{ minHeight: '100dvh', position: 'relative', padding: '72px 20px 40px' }}>
-      <button className="back-arrow" aria-label="Back" onClick={onBack}>←</button>
+    <motion.div
+      className="connect-wrapper"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease } }}
+      exit={{ opacity: 0, y: -10, transition: { duration: 0.4 } }}
+    >
+      <CosmicBackground />
 
-      <div style={{ textAlign: 'center', marginBottom: 36 }}>
-        <div className="display" style={{ fontSize: 28, letterSpacing: '-0.01em' }}>Connect your body.</div>
-        <div className="secondary" style={{ fontSize: 13, marginTop: 8 }}>Pick a sensor to begin listening.</div>
+      {/* Back */}
+      <button className="back-arrow" aria-label="Back" onClick={() => navigate('/')}>←</button>
+
+      {/* Flowing waveform band */}
+      <div className="connect-waves">
+        <FlowingWaves
+          colors={['var(--accent-amber)', 'var(--accent-rose)', 'var(--accent-purple)']}
+          opacity={0.3}
+          height={48}
+        />
       </div>
 
+      {/* Headline */}
+      <motion.div
+        className="connect-headline"
+        initial={{ opacity: 0, y: 16 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease, delay: 0.15 } }}
+      >
+        Connect<br />Your body.
+      </motion.div>
+
+      <motion.div
+        className="connect-desc"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.8, delay: 0.3 } }}
+      >
+        Your nervous system is already broadcasting. A sensor just lets us listen closer —
+        and shape music that actually responds to what's happening inside you.
+      </motion.div>
+
+      {/* BLE unavailable warning */}
       {!webBtOk && (
-        <div style={{
-          background: 'rgba(232,98,42,0.08)', border: '1px solid rgba(232,98,42,0.25)',
-          borderRadius: 10, padding: '12px 14px', marginBottom: 20, fontSize: 12, lineHeight: 1.5,
-        }}>
-          <strong style={{ color: 'var(--sympathetic-a)' }}>Bluetooth unavailable.</strong>{' '}
-          Web Bluetooth requires <span className="mono">https://</span> or <span className="mono">localhost</span>.
+        <div className="connect-ble-warn">
+          <strong style={{ color: 'var(--accent-rose)' }}>Bluetooth unavailable.</strong>{' '}
+          Web Bluetooth requires <code>https://</code> or <code>localhost</code>.
           On iPhone, use the <strong>Bluefy</strong> browser. Simulator still works.
         </div>
       )}
 
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
-        {SENSORS.map(s => {
+      {/* Device selection card */}
+      <motion.div
+        className="connect-devices"
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease, delay: 0.4 } }}
+      >
+        <div className="connect-devices-header">Choose how to listen</div>
+        <div className="connect-devices-sub">Connect a device or continue without one.</div>
+
+        {SENSORS.map((s, i) => {
           const isSel = selected === s.id
           const disabled = s.needsBle && !webBtOk
-          const Icon = s.icon
+
           return (
-            <button
+            <motion.button
               key={s.id}
+              className={`device-row ${s.cls}${isSel ? ' selected' : ''}`}
               disabled={disabled}
               onClick={() => handlePickSensor(s.id)}
-              className="state-color"
-              style={{
-                background: isSel ? 'var(--bg-elevated)' : 'var(--bg-surface)',
-                border: `1px solid ${isSel ? 'var(--state)' : 'rgba(255,255,255,0.06)'}`,
-                borderRadius: 14,
-                padding: '16px 18px',
-                display: 'flex', alignItems: 'center', gap: 14,
-                opacity: disabled ? 0.35 : 1,
-                cursor: disabled ? 'not-allowed' : 'pointer',
-                textAlign: 'left',
-                color: 'var(--text-primary)',
-              }}
+              initial={{ opacity: 0, x: -20 }}
+              animate={{ opacity: disabled ? 0.35 : 1, x: 0, transition: { duration: 0.5, ease, delay: 0.5 + i * 0.1 } }}
+              whileHover={{ x: 4, backgroundColor: 'var(--bg-card-hover)' }}
+              whileTap={{ scale: 0.98 }}
             >
-              <div style={{ width: 44, height: 44, borderRadius: 10, background: 'rgba(0,201,167,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
-                <Icon />
+              <div className="device-icon">{s.icon}</div>
+              <div style={{ flex: 1 }}>
+                <div className="device-name">{s.name}</div>
+                <div className="device-sub">{s.sub}</div>
               </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 15, fontWeight: 500 }}>{s.name}</div>
-                <div className="secondary" style={{ fontSize: 11, marginTop: 2 }}>{s.sub}</div>
-              </div>
-              {isSel && <span style={{ color: 'var(--state)', fontSize: 18 }}>●</span>}
-            </button>
+              <span className="device-chevron">›</span>
+            </motion.button>
           )
         })}
-      </div>
 
-      {/* Inline connect panel for selected BLE sensor */}
-      {sensorMeta && sensorMeta.needsBle && webBtOk && (
-        <div style={{ marginTop: 20, padding: 16, background: 'rgba(255,255,255,0.02)', border: '1px solid rgba(255,255,255,0.05)', borderRadius: 12 }}>
-          <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.15em', marginBottom: 10 }}>PAIRING</div>
-          <button
-            onClick={handleConnect}
-            disabled={bleStatus.status === 'requesting' || bleStatus.status === 'connected'}
-            style={{
-              width: '100%', padding: '12px', borderRadius: 10,
-              background: bleStatus.status === 'connected' ? 'rgba(0,201,167,0.12)' : 'transparent',
-              border: `1px solid ${bleStatus.status === 'connected' ? 'var(--state)' : 'rgba(255,255,255,0.12)'}`,
-              color: 'var(--text-primary)', fontSize: 13, cursor: 'pointer', minHeight: 44,
-            }}
-          >
-            {bleStatus.status === 'connected' ? 'Connected ●'
-              : bleStatus.status === 'requesting' ? 'Searching…'
-              : bleStatus.status === 'error' ? 'Retry connect'
-              : `Pair ${sensorMeta.name}`}
-          </button>
-          <div className="secondary mono" style={{ fontSize: 10, marginTop: 10, minHeight: 14, textAlign: 'center' }}>
-            {bleStatus.status === 'connected' && `RR received: ${bleStatus.rrCount}${bleStatus.rrCount >= MIN_RR_TO_CONTINUE ? ' ✓' : ` / ${MIN_RR_TO_CONTINUE}`}`}
-            {bleStatus.status === 'error' && `Error: ${bleStatus.error || 'failed'}`}
-            {bleStatus.status === 'requesting' && 'Waiting for device…'}
-            {bleStatus.status === 'disconnected' && 'Disconnected'}
-            {bleStatus.status === 'idle' && 'Wet electrodes · wear strap · tap Pair'}
-          </div>
+        {/* Inline BLE pairing panel */}
+        <AnimatePresence>
+          {sensorMeta?.needsBle && webBtOk && (
+            <motion.div
+              className="connect-pair-panel"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: 'auto', transition: { duration: 0.4, ease } }}
+              exit={{ opacity: 0, height: 0 }}
+            >
+              <button
+                className={`connect-pair-btn${bleStatus.status === 'connected' ? ' connected' : ''}`}
+                onClick={handleConnect}
+                disabled={bleStatus.status === 'requesting' || bleStatus.status === 'connected'}
+              >
+                {connectBtnLabel()}
+              </button>
+              <div className="connect-pair-status">{statusText()}</div>
+            </motion.div>
+          )}
+        </AnimatePresence>
+
+        <div className="connect-divider">or</div>
+
+        <button className="connect-no-device" onClick={() => { handlePickSensor('simulator'); navigate('/calibrate') }}>
+          Continue without device
+        </button>
+
+        {/* Privacy badges */}
+        <div className="connect-badges">
+          <span className="connect-badge">🔒 Private — your data stays with you</span>
+          <span className="connect-badge">🛡️ HIPAA-grade encryption</span>
         </div>
-      )}
+      </motion.div>
 
-      <button
-        className="btn state-color"
-        style={{ marginTop: 28 }}
+      {/* Continue button */}
+      <motion.button
+        className="connect-continue-btn"
         disabled={!canContinue}
         onClick={goContinue}
+        initial={{ opacity: 0, y: 20 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease, delay: 0.8 } }}
+        whileTap={{ scale: 0.97 }}
       >
-        Continue
-      </button>
-    </div>
-  )
-}
+        Continue →
+      </motion.button>
 
-function PolarIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <rect x="3" y="9" width="18" height="6" rx="1.5" stroke="var(--state)" strokeWidth="1.5" className="state-color" />
-      <path d="M8 12h2l1-2 1 4 1-2h3" stroke="var(--state)" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" className="state-color" />
-    </svg>
-  )
-}
-function WhoopIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <circle cx="12" cy="12" r="6" stroke="var(--state)" strokeWidth="1.5" className="state-color" />
-      <path d="M4 12h2M18 12h2M12 4v2M12 18v2" stroke="var(--state)" strokeWidth="1.2" strokeLinecap="round" className="state-color" />
-    </svg>
-  )
-}
-function SimIcon() {
-  return (
-    <svg width="22" height="22" viewBox="0 0 24 24" fill="none">
-      <path d="M4 14c2-4 4-4 6 0s4 4 6 0 4-4 4 0" stroke="var(--state)" strokeWidth="1.5" strokeLinecap="round" className="state-color" />
-    </svg>
+      {/* Privacy section */}
+      <motion.div
+        className="connect-privacy"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.8, delay: 1.0 } }}
+      >
+        <motion.div
+          className="connect-privacy-icon"
+          animate={{ y: [0, -3, 0] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+        >
+          🛡️
+        </motion.div>
+        <div className="connect-privacy-title">Your nervous system is private.</div>
+        <div className="connect-privacy-sub">Anonymous and encrypted.</div>
+        <div className="connect-privacy-note">No data is stored automatically.</div>
+      </motion.div>
+    </motion.div>
   )
 }

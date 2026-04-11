@@ -1,0 +1,165 @@
+.insights-wrapper {
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 40px);
+}
+
+/* ── Top area ─────────────────────────────────────────────────────── */
+.insights-top {
+  padding: calc(env(safe-area-inset-top, 0px) + 24px) 24px 0;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.insights-tag {
+  font-size: 10px;
+  letter-spacing: 0.2em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 12px;
+}
+
+.insights-headline {
+  font-size: 24px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  line-height: 1.3;
+  margin-bottom: 4px;
+}
+
+.insights-sub {
+  font-size: 13px;
+  color: var(--text-muted);
+  margin-bottom: 28px;
+}
+
+/* ── Delta ring ───────────────────────────────────────────────────── */
+.insights-ring-wrap {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Stats row ────────────────────────────────────────────────────── */
+.insights-stats {
+  display: flex;
+  align-items: center;
+  justify-content: space-around;
+  margin: 0 20px 16px;
+  padding: 14px 12px;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: 16px;
+  flex-shrink: 0;
+}
+
+.insights-stat {
+  text-align: center;
+}
+
+.insights-stat-label {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  margin-bottom: 4px;
+}
+
+.insights-stat-value {
+  font-size: 22px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+}
+
+.insights-stat-unit {
+  font-size: 9px;
+  color: var(--text-muted);
+  margin-top: 2px;
+}
+
+.insights-delta-arrow {
+  font-size: 28px;
+}
+
+/* ── Meta line ────────────────────────────────────────────────────── */
+.insights-meta {
+  font-size: 11px;
+  font-family: var(--font-mono);
+  color: var(--text-muted);
+  text-align: center;
+  margin-bottom: 20px;
+  flex-shrink: 0;
+}
+
+/* ── Insight card ─────────────────────────────────────────────────── */
+.insights-card {
+  margin: 0 20px 12px;
+  padding: 16px 18px 18px;
+  border-radius: 16px;
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-left: 3px solid var(--state);
+  flex-shrink: 0;
+}
+
+.insights-card-tag {
+  font-size: 9px;
+  letter-spacing: 0.18em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.insights-card-body {
+  font-size: 15px;
+  font-style: italic;
+  line-height: 1.5;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+}
+
+/* ── CTA button ───────────────────────────────────────────────────── */
+.insights-cta {
+  margin: 8px 20px 0;
+  padding: 16px;
+  border-radius: 28px;
+  background: var(--gradient-purple-blue);
+  border: none;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+  text-align: center;
+  transition: opacity 200ms;
+  flex-shrink: 0;
+}
+.insights-cta:hover { opacity: 0.88; }
+.insights-cta:active { transform: scale(0.97); }
+
+.insights-new-btn {
+  margin: 10px 20px 0;
+  padding: 14px;
+  border-radius: 28px;
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-secondary);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 200ms;
+  flex-shrink: 0;
+}
+.insights-new-btn:hover { background: rgba(255,255,255,0.04); }

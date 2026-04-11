@@ -1,0 +1,129 @@
+.calib-wrapper {
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: var(--gradient-cosmic-bg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 72px) 20px
+           calc(env(safe-area-inset-bottom, 0px) + 48px);
+}
+
+.calib-title {
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-bottom: 36px;
+}
+
+.calib-sensor-pill {
+  position: absolute;
+  top: calc(env(safe-area-inset-top, 0px) + 24px);
+  right: 20px;
+  font-size: 11px;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: var(--bg-glass);
+  border: var(--glass-border);
+  color: var(--text-secondary);
+  backdrop-filter: var(--glass-blur);
+}
+
+.calib-orb-wrap {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  margin-bottom: 20px;
+}
+
+.calib-orb-glow {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(45,212,191,0.18), transparent 70%);
+  pointer-events: none;
+}
+
+.calib-hr-value {
+  font-size: 44px;
+  font-weight: 300;
+  font-family: var(--font-display);
+  line-height: 1;
+  color: var(--text-primary);
+}
+
+.calib-hr-label {
+  font-size: 10px;
+  color: var(--text-muted);
+  margin-top: 3px;
+  letter-spacing: 0.1em;
+}
+
+.calib-rr-count {
+  font-size: 11px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  margin-bottom: 32px;
+  opacity: 0.55;
+}
+
+.calib-stages {
+  width: 100%;
+  max-width: 240px;
+  margin-bottom: 32px;
+}
+
+.calib-stage-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+  transition: opacity 600ms ease;
+}
+
+.calib-stage-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 400ms ease, border 400ms ease;
+}
+
+.calib-stage-label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.calib-message {
+  font-size: 13px;
+  color: var(--text-secondary);
+  text-align: center;
+  min-height: 20px;
+  opacity: 0.7;
+}
+
+/* Bottom progress bar */
+.calib-progress-bar {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(255,255,255,0.05);
+}
+.calib-progress-fill {
+  height: 100%;
+  background: var(--accent-teal);
+  transition: width 150ms linear;
+}

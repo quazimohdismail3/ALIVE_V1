@@ -1,0 +1,202 @@
+.session-wrapper {
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+  background: var(--bg-primary);
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+/* ── Top bar ──────────────────────────────────────────────────────── */
+.session-topbar {
+  display: flex;
+  align-items: center;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px 10px;
+  gap: 10px;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+}
+
+.session-back-btn {
+  background: rgba(255,255,255,0.05);
+  color: var(--text-secondary);
+  border: 1px solid var(--border-subtle);
+  cursor: pointer;
+  font-size: 18px;
+  width: 44px; height: 44px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  flex-shrink: 0;
+  transition: background 200ms;
+}
+.session-back-btn:hover { background: rgba(255,255,255,0.08); }
+
+.session-state-info { flex: 1; min-width: 0; }
+.session-state-label {
+  font-size: 18px;
+  font-weight: 600;
+  font-family: var(--font-display);
+  color: var(--text-primary);
+  line-height: 1.2;
+}
+.session-state-sub {
+  font-size: 11px;
+  color: var(--text-secondary);
+  opacity: 0.8;
+  margin-top: 1px;
+}
+
+.session-timer {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+/* ── Status beacons ───────────────────────────────────────────────── */
+.session-beacons {
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+  padding: 2px 16px 8px;
+  flex-shrink: 0;
+}
+
+/* ── Hook line ────────────────────────────────────────────────────── */
+.session-hook {
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-secondary);
+  padding: 0 20px 8px;
+  flex-shrink: 0;
+}
+
+/* ── Hero wave area ───────────────────────────────────────────────── */
+.session-hero {
+  position: relative;
+  flex-shrink: 0;
+}
+
+/* ── Parameter mapping ────────────────────────────────────────────── */
+.session-params {
+  padding: 8px 20px 4px;
+  flex-shrink: 0;
+}
+.session-param-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 5px 0;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+.session-param-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+.session-param-arrow { font-size: 9px; color: rgba(255,255,255,0.2); }
+.session-param-value {
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--accent-teal);
+  transition: color 800ms ease;
+}
+
+/* ── Equalizer bars ───────────────────────────────────────────────── */
+.session-eq {
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  gap: 2px;
+  height: 28px;
+  padding: 0 20px 4px;
+  flex-shrink: 0;
+}
+.session-eq-bar {
+  flex: 1;
+  max-width: 8px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent-amber);
+  animation: eqBounce linear infinite;
+  will-change: transform;
+}
+@keyframes eqBounce {
+  0%, 100% { transform: scaleY(0.2); }
+  50%       { transform: scaleY(1); }
+}
+
+/* ── Music param tiers ────────────────────────────────────────────── */
+.session-tier-section {
+  padding: 4px 20px 12px;
+  flex-shrink: 0;
+}
+.session-tier-label {
+  font-size: 9px;
+  letter-spacing: 0.15em;
+  color: var(--text-muted);
+  padding-left: 8px;
+  border-left: 3px solid;
+  margin-bottom: 4px;
+}
+.session-tier-bars {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 6px;
+}
+.session-param-short {
+  font-size: 10px;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+  text-align: center;
+  margin-top: 2px;
+  opacity: 0.5;
+}
+
+/* ── HRV chart ────────────────────────────────────────────────────── */
+.session-hrv-section {
+  padding: 2px 20px 8px;
+  flex-shrink: 0;
+}
+.session-hrv-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+  font-size: 9px;
+  letter-spacing: 0.12em;
+  color: var(--text-muted);
+  font-family: var(--font-mono);
+}
+
+/* ── Bottom button ────────────────────────────────────────────────── */
+.session-reconnect-banner {
+  margin: 0 20px 12px;
+  padding: 10px 16px;
+  border-radius: 12px;
+  background: rgba(245, 158, 11, 0.15);
+  border: 1px solid rgba(245, 158, 11, 0.35);
+  color: #f59e0b;
+  font-size: 13px;
+  text-align: center;
+  font-weight: 500;
+}
+
+.session-pause-btn {
+  margin: 0 20px;
+  margin-bottom: max(20px, env(safe-area-inset-bottom));
+  padding: 14px;
+  border-radius: 28px;
+  border: 1px solid var(--border-medium);
+  background: transparent;
+  color: var(--text-primary);
+  font-size: 15px;
+  cursor: pointer;
+  text-align: center;
+  transition: background 200ms;
+}
+.session-pause-btn:hover { background: rgba(255,255,255,0.04); }

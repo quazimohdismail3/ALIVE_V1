@@ -1,36 +1,81 @@
 :root {
-  /* Background */
-  --bg-deep:         #060A0E;
-  --bg-surface:      #0C1218;
-  --bg-elevated:     #121C28;
+  /* Backgrounds */
+  --bg-void: #000000;
+  --bg-primary: #08080f;
+  --bg-card: rgba(255, 255, 255, 0.04);
+  --bg-card-hover: rgba(255, 255, 255, 0.07);
+  --bg-glass: rgba(255, 255, 255, 0.06);
 
-  /* ANS state colors — drive everything tied to state */
-  --ventral:         #00C9A7;
-  --sympathetic-h:   #F5A623;
-  --sympathetic-a:   #E8622A;
-  --dorsal:          #4A7FA5;
-  --burnout:         #7B5EA7;
+  /* Legacy compat aliases — keep old screens working during transition */
+  --bg-deep: #060A0E;
+  --bg-surface: #0C1218;
+  --bg-elevated: #121C28;
+
+  /* Borders */
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-medium: rgba(255, 255, 255, 0.10);
+  --border-glow-amber: rgba(245, 158, 11, 0.3);
+
+  /* Accent colors */
+  --accent-amber: #f59e0b;
+  --accent-amber-soft: rgba(245, 158, 11, 0.15);
+  --accent-rose: #f43f5e;
+  --accent-rose-soft: rgba(244, 63, 94, 0.15);
+  --accent-teal: #2dd4bf;
+  --accent-teal-soft: rgba(45, 212, 191, 0.15);
+  --accent-purple: #a78bfa;
+  --accent-purple-soft: rgba(167, 139, 250, 0.2);
+  --accent-gold: #fbbf24;
+  --accent: var(--accent-teal); /* legacy compat */
 
   /* Text */
-  --text-primary:    #E8EDF2;
-  --text-secondary:  #8A9BAB;
-  --text-ghost:      #637A8F;   /* ~4.5:1 on --bg-deep; decorative de-emphasis */
+  --text-primary: #f1f0ee;
+  --text-secondary: #a8a7b0;
+  --text-muted: #6b6a72;
+  --text-ghost: #637A8F; /* legacy compat */
+  --text-gold: #fbbf24;
 
-  --accent:          #00C9A7;
+  /* Gradients */
+  --gradient-amber-rose: linear-gradient(135deg, #f59e0b, #f43f5e);
+  --gradient-purple-blue: linear-gradient(135deg, #a78bfa, #6366f1);
+  --gradient-cosmic-bg:
+    radial-gradient(ellipse at 50% 0%, rgba(245, 158, 11, 0.08) 0%, transparent 50%),
+    radial-gradient(ellipse at 80% 80%, rgba(244, 63, 94, 0.05) 0%, transparent 40%),
+    radial-gradient(ellipse at 20% 60%, rgba(167, 139, 250, 0.04) 0%, transparent 40%),
+    var(--bg-primary);
 
-  /* Current state color — overridden at runtime */
-  --state:           var(--ventral);
+  /* Glass */
+  --glass-blur: blur(16px);
+  --glass-border: 1px solid var(--border-subtle);
+  --glass-radius: 20px;
 
-  /* Type */
-  --font-display: 'DM Serif Display', Georgia, serif;
-  --font-body:    'DM Sans', system-ui, sans-serif;
-  --font-mono:    'JetBrains Mono', ui-monospace, monospace;
+  /* Typography */
+  --font-display: 'Outfit', sans-serif;
+  --font-body: 'DM Sans', sans-serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+
+  /* Timing */
+  --ease-organic: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.56, 0.64, 1);
+  --duration-breath: 6s;
+  --duration-slow: 8s;
+  --duration-medium: 2s;
+  --duration-fast: 0.3s;
+
+  /* Polyvagal state colors — preserved from V1 */
+  --ventral:        #00C9A7;
+  --sympathetic-h:  #F5A623;
+  --sympathetic-a:  #E8622A;
+  --dorsal:         #4A7FA5;
+  --burnout:        #7B5EA7;
+  --state:          var(--ventral);
 }
 
+/* ── Reset ──────────────────────────────────────────────────────────────── */
 * { box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body, #root { height: 100%; margin: 0; padding: 0; }
 body {
-  background: var(--bg-deep);
+  background: var(--bg-void);
   color: var(--text-primary);
   font-family: var(--font-body);
   font-size: 16px;
@@ -47,24 +92,77 @@ input, textarea { font-family: inherit; }
   outline-offset: 3px;
 }
 
-.app { min-height: 100%; display: flex; flex-direction: column; max-width: 430px; margin: 0 auto; }
+/* ── App shell ──────────────────────────────────────────────────────────── */
+.app {
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
+  max-width: 430px;
+  margin: 0 auto;
+  position: relative;
+}
 
-/* Screens — fade transition */
-.screen { flex: 1; opacity: 0; transform: translateY(8px); animation: enter 400ms ease forwards; padding: 24px 20px 40px; }
+/* Screen wrapper — cosmic background, all new screens use this */
+.screen-wrapper {
+  max-width: 430px;
+  min-height: 100dvh;
+  margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+  background: var(--gradient-cosmic-bg);
+}
+
+/* ── Screen enter animation (legacy compat for existing screens) ─────────── */
+.screen {
+  flex: 1;
+  opacity: 0;
+  transform: translateY(8px);
+  animation: enter 400ms ease forwards;
+  padding: 24px 20px 40px;
+}
 @keyframes enter { to { opacity: 1; transform: translateY(0); } }
 
-/* Breathe */
+/* ── Glassmorphism utility ──────────────────────────────────────────────── */
+.glass-card {
+  background: var(--bg-glass);
+  backdrop-filter: var(--glass-blur);
+  -webkit-backdrop-filter: var(--glass-blur);
+  border: var(--glass-border);
+  border-radius: var(--glass-radius);
+}
+
+/* ── Animations ─────────────────────────────────────────────────────────── */
 @keyframes breathe {
   0%, 100% { transform: scale(1.0); }
-  50% { transform: scale(1.08); }
+  50%       { transform: scale(1.08); }
 }
 .breathe { animation: breathe 4s ease-in-out infinite; }
 
-.display { font-family: var(--font-display); }
-.mono { font-family: var(--font-mono); }
-.ghost { color: var(--text-ghost); }
+@keyframes heartbeat {
+  0%         { transform: scale(1); }
+  15%        { transform: scale(1.14); }
+  30%        { transform: scale(1); }
+  45%        { transform: scale(1.06); }
+  60%, 100%  { transform: scale(1); }
+}
+.heart-pulse {
+  animation: heartbeat var(--beat-duration, 1000ms) cubic-bezier(0.4, 0, 0.2, 1) infinite;
+  transform-origin: center;
+}
+
+@keyframes nerve-drift {
+  0%, 100% { opacity: 0.55; }
+  50%      { opacity: 0.95; }
+}
+.nerve-mark { animation: nerve-drift 5s ease-in-out infinite; }
+
+/* ── Typography helpers ─────────────────────────────────────────────────── */
+.display   { font-family: var(--font-display); }
+.mono      { font-family: var(--font-mono); }
+.ghost     { color: var(--text-ghost); }
 .secondary { color: var(--text-secondary); }
 
+/* ── Buttons ────────────────────────────────────────────────────────────── */
 .btn {
   width: 100%;
   height: 56px;
@@ -83,6 +181,7 @@ input, textarea { font-family: inherit; }
   border: 1px solid var(--text-ghost);
 }
 
+/* ── Pills ──────────────────────────────────────────────────────────────── */
 .pill {
   padding: 8px 14px;
   border-radius: 999px;
@@ -95,6 +194,7 @@ input, textarea { font-family: inherit; }
 }
 .pill.active { color: var(--state); border-color: var(--state); }
 
+/* ── Card (legacy) ──────────────────────────────────────────────────────── */
 .card {
   background: var(--bg-surface);
   border-radius: 14px;
@@ -103,14 +203,21 @@ input, textarea { font-family: inherit; }
   cursor: pointer;
 }
 
-/* State color transitions should always be slow */
-.state-color { transition: color 1200ms ease, background 1200ms ease, border-color 1200ms ease, fill 1200ms ease, stroke 1200ms ease; }
+/* ── State color transitions ────────────────────────────────────────────── */
+.state-color {
+  transition:
+    color 1200ms ease,
+    background 1200ms ease,
+    border-color 1200ms ease,
+    fill 1200ms ease,
+    stroke 1200ms ease;
+}
 
-/* Param bar */
+/* ── Param bar ──────────────────────────────────────────────────────────── */
 .param-bar { height: 3px; background: var(--bg-elevated); border-radius: 2px; overflow: hidden; }
 .param-bar > span { display: block; height: 100%; background: var(--state); transition: width 600ms ease-in-out; }
 
-/* Cosmic ambient background — Splash + Dashboard */
+/* ── Cosmic ambient background (legacy helper classes) ──────────────────── */
 .cosmic-bg {
   background:
     radial-gradient(ellipse 80% 60% at 30% 15%, rgba(0,201,167,0.10), transparent 60%),
@@ -125,10 +232,11 @@ input, textarea { font-family: inherit; }
     var(--bg-deep);
 }
 
+/* ── Safe-area helpers ──────────────────────────────────────────────────── */
 .safe-top    { padding-top:    env(safe-area-inset-top,    0px); }
 .safe-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
 
-/* Back arrow — top-left corner utility */
+/* ── Back arrow ─────────────────────────────────────────────────────────── */
 .back-arrow {
   position: absolute; top: 16px; left: 16px;
   width: 44px; height: 44px; border-radius: 50%;
@@ -141,32 +249,11 @@ input, textarea { font-family: inherit; }
 }
 .back-arrow:active { background: rgba(255,255,255,0.08); color: var(--text-primary); }
 
-/* Heart beat pulse — driven by inline style --beat-duration */
-@keyframes heartbeat {
-  0%   { transform: scale(1); }
-  15%  { transform: scale(1.14); }
-  30%  { transform: scale(1); }
-  45%  { transform: scale(1.06); }
-  60%, 100% { transform: scale(1); }
-}
-.heart-pulse {
-  animation: heartbeat var(--beat-duration, 1000ms) cubic-bezier(0.4, 0, 0.2, 1) infinite;
-  transform-origin: center;
-}
-
-/* Vagus-nerve mark drift */
-@keyframes nerve-drift {
-  0%, 100% { opacity: 0.55; }
-  50%      { opacity: 0.95; }
-}
-.nerve-mark { animation: nerve-drift 5s ease-in-out infinite; }
-
+/* ── Reduced motion ─────────────────────────────────────────────────────── */
 @media (prefers-reduced-motion: reduce) {
   .breathe,
   .heart-pulse,
-  .nerve-mark {
-    animation: none;
-  }
+  .nerve-mark { animation: none; }
   .screen {
     animation: none;
     opacity: 1;
@@ -174,9 +261,64 @@ input, textarea { font-family: inherit; }
   }
 }
 
-/* State color hooks — set data-state on root to switch */
+/* ── CosmicBackground blobs ─────────────────────────────────────────────── */
+@keyframes blobDrift {
+  0%   { transform: translate(0%, 0%) scale(1); }
+  33%  { transform: translate(4%, -6%) scale(1.05); }
+  66%  { transform: translate(-3%, 4%) scale(0.97); }
+  100% { transform: translate(0%, 0%) scale(1); }
+}
+@keyframes blobDrift2 {
+  0%   { transform: translate(0%, 0%) scale(1); }
+  40%  { transform: translate(-5%, 5%) scale(1.06); }
+  70%  { transform: translate(3%, -3%) scale(0.96); }
+  100% { transform: translate(0%, 0%) scale(1); }
+}
+@keyframes blobDrift3 {
+  0%   { transform: translate(0%, 0%) scale(1); }
+  50%  { transform: translate(5%, 3%) scale(1.04); }
+  80%  { transform: translate(-2%, -4%) scale(0.98); }
+  100% { transform: translate(0%, 0%) scale(1); }
+}
+@keyframes cosmicTwinkle {
+  0%, 100% { opacity: var(--tw-op, 0.3); }
+  50%       { opacity: calc(var(--tw-op, 0.3) * 1.8); }
+}
+
+.cosmic-blob {
+  position: absolute;
+  border-radius: 50%;
+  filter: blur(80px);
+  pointer-events: none;
+}
+.cosmic-blob--amber {
+  width: 60%; height: 50%;
+  top: -10%; left: 10%;
+  background: radial-gradient(circle, rgba(245,158,11,0.12) 0%, transparent 70%);
+  animation: blobDrift 20s ease-in-out infinite;
+}
+.cosmic-blob--rose {
+  width: 55%; height: 45%;
+  bottom: -5%; right: -5%;
+  background: radial-gradient(circle, rgba(244,63,94,0.08) 0%, transparent 70%);
+  animation: blobDrift2 25s ease-in-out infinite;
+}
+.cosmic-blob--purple {
+  width: 50%; height: 40%;
+  top: 40%; left: -10%;
+  background: radial-gradient(circle, rgba(167,139,250,0.07) 0%, transparent 70%);
+  animation: blobDrift3 18s ease-in-out infinite;
+}
+
+/* ── FlowingWaves animation ─────────────────────────────────────────────── */
+@keyframes waveFlow {
+  from { stroke-dashoffset: 640; }
+  to   { stroke-dashoffset: 0; }
+}
+
+/* ── Polyvagal state hooks ──────────────────────────────────────────────── */
 [data-state="ventral_vagal"]       { --state: var(--ventral); }
-[data-state="healthy_sympathetic"]  { --state: var(--sympathetic-h); }
-[data-state="anxious_sympathetic"]  { --state: var(--sympathetic-a); }
-[data-state="dorsal_vagal"]         { --state: var(--dorsal); }
-[data-state="burnout_rigidity"]     { --state: var(--burnout); }
+[data-state="healthy_sympathetic"] { --state: var(--sympathetic-h); }
+[data-state="anxious_sympathetic"] { --state: var(--sympathetic-a); }
+[data-state="dorsal_vagal"]        { --state: var(--dorsal); }
+[data-state="burnout_rigidity"]    { --state: var(--burnout); }

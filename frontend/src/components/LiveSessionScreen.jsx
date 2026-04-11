@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { useApp } from '../context/AppContext.jsx'
 import { ToneEngine } from '../engines/toneEngine.js'
 import { store } from '../store/sessionStore.js'
+import CosmicBackground from './CosmicBackground.jsx'
+import '../styles/session.css'
 
 const TIER_GROUPS = [
   { label: 'TEMPORAL',   params: ['bpm', 'rhythmic_complexity', 'beat_regularity', 'silence_ratio'] },
@@ -42,9 +47,14 @@ function normParam(name, value) {
   return Math.max(0, Math.min(1, value))
 }
 
-export default function MainSession({ selection, ble, setAnsState, onExit, onBack }) {
+const ease = [0.16, 1, 0.3, 1]
+
+export default function LiveSessionScreen() {
+  const navigate = useNavigate()
+  const { selection, ble, setAnsState, setStartFrame, setEndFrame } = useApp()
+
   const [frame, setFrame] = useState(null)
-  const [timeLeft, setTimeLeft] = useState(selection.duration_s)
+  const [timeLeft, setTimeLeft] = useState(selection?.duration_s ?? 600)
   const [hrvSeries, setHrvSeries] = useState([])
   const [rrPairs, setRrPairs] = useState([])
   const [bleStatus, setBleStatus] = useState(ble ? { status: ble.status, rrCount: ble.rrCount, lastRrAt: ble.lastRrAt } : null)
@@ -52,6 +62,7 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
   const [beatKey, setBeatKey] = useState(0)
   const [beatMs, setBeatMs] = useState(1000)
   const [showExitModal, setShowExitModal] = useState(false)
+  const [showReconnectModal, setShowReconnectModal] = useState(false)
   const toneRef = useRef(null)
   const bleRef = useRef(null)
   const wsRef = useRef(null)
@@ -79,12 +90,10 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
     async function setup() {
       toneRef.current = new ToneEngine()
       await toneRef.current.start()
-      toneRef.current.setSession(selection.session)
+      toneRef.current.setSession(selection?.session ?? 'calm')
 
-      const proto = location.protocol === 'https:' ? 'wss' : 'ws'
-      const host = location.host
       const userId = store.get().user_id
-      const url = `${proto}://${host}/ws/session?session=${selection.session}&mode=${selection.sensor_mode}&duration_s=${selection.duration_s}&user_id=${encodeURIComponent(userId)}`
+      const url = `/ws/session?session=${selection?.session ?? 'calm'}&mode=${selection?.sensor_mode ?? 'simulator'}&duration_s=${selection?.duration_s ?? 600}&user_id=${encodeURIComponent(userId)}`
       const ws = new WebSocket(url)
       wsRef.current = ws
 
@@ -110,9 +119,15 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
         }
       }
 
-      ws.onclose = () => { if (!cancelled) onExit(startFrameRef.current, frameRef.current) }
+      ws.onclose = () => {
+        if (!cancelled) {
+          setStartFrame(startFrameRef.current)
+          setEndFrame(frameRef.current)
+          navigate('/insights')
+        }
+      }
 
-      if (ble && (selection.sensor_mode === 'polar' || selection.sensor_mode === 'whoop')) {
+      if (ble && (selection?.sensor_mode === 'polar' || selection?.sensor_mode === 'whoop')) {
         bleRef.current = ble
         if (ble.setOnRr) ble.setOnRr(rrSink(ws))
         else ble.onRr = rrSink(ws)
@@ -133,7 +148,12 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
 
   useEffect(() => {
     if (!ble) return
-    const unsub = ble.onStatusChange(setBleStatus)
+    const unsub = ble.onStatusChange((snap) => {
+      setBleStatus(snap)
+      if (snap.status === 'error' && snap.error === 'reconnect_failed') {
+        setShowReconnectModal(true)
+      }
+    })
     return () => unsub()
   }, [ble])
 
@@ -148,7 +168,6 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
   // Derived values
   const ansState = frame?.ans?.state || 'ventral_vagal'
   const ansLabel = ANS_LABELS[ansState] ?? { label: 'Calibrating', sub: 'Reading your state…' }
-  const conf = frame?.ans?.confidence
   const mins = Math.floor(timeLeft / 60)
   const secs = Math.floor(timeLeft % 60).toString().padStart(2, '0')
   const hr = frame?.metrics?.hr
@@ -156,17 +175,14 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
   const sqi = frame?.metrics?.sqi
   const sd1 = frame?.metrics?.sd1
   const sd2 = frame?.metrics?.sd2
-  // Fix: use frame.affect for Russell circumplex display values
   const affectArousal = frame?.affect?.arousal
   const affectValence = frame?.affect?.valence
   const quadrant = QUADRANT_NAMES[frame?.affect?.quadrant] ?? frame?.affect?.quadrant ?? null
-  // mpc_score is optimization error (lower = better); invert to fitness %
   const fitScore = frame?.mpc_score != null
     ? Math.max(0, Math.min(1, 1 - frame.mpc_score))
     : null
   const strategy = frame?.strategy
 
-  // Parameter mapping live text
   const bpm = frame?.music_params?.bpm
   const tempoText = bpm == null ? '—'
     : bpm < 65 ? 'very slow'
@@ -188,69 +204,63 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
     : 'neutral'
 
   return (
-    <div className="screen" style={{ padding: 0, display: 'flex', flexDirection: 'column',
-                                      overflowY: 'auto', minHeight: '100dvh' }}>
+    <motion.div
+      className="session-wrapper"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease } }}
+      exit={{ opacity: 0, y: -10, transition: { duration: 0.4 } }}
+    >
+      <CosmicBackground />
 
       {/* TOP BAR */}
-      <div style={{ display: 'flex', alignItems: 'center', padding: '16px 20px 10px',
-                    gap: 10, flexShrink: 0 }}>
+      <div className="session-topbar">
         <button
+          className="session-back-btn"
           onClick={() => setShowExitModal(true)}
-          style={{ background: 'rgba(255,255,255,0.04)', color: 'var(--text-secondary)',
-                   border: '1px solid rgba(255,255,255,0.08)', cursor: 'pointer',
-                   fontSize: 18, width: 44, height: 44, borderRadius: '50%',
-                   display: 'flex', alignItems: 'center', justifyContent: 'center',
-                   flexShrink: 0 }}
           aria-label="End session"
         >‹</button>
 
-        <div style={{ flex: 1, minWidth: 0 }}>
-          <div style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)',
-                        lineHeight: 1.2 }}>
-            {ansLabel.label}
-          </div>
-          <div className="secondary" style={{ fontSize: 11, opacity: 0.8, marginTop: 1 }}>
-            {ansLabel.sub}
-          </div>
+        <div className="session-state-info">
+          <div className="session-state-label">{ansLabel.label}</div>
+          <div className="session-state-sub">{ansLabel.sub}</div>
         </div>
 
-        <span className="mono secondary" style={{ fontSize: 11, flexShrink: 0 }}>
-          {mins}:{secs}
-        </span>
+        <span className="session-timer">{mins}:{secs}</span>
 
         <MiniOrb hr={hr} beatMs={beatMs} beatKey={beatKey} />
       </div>
 
       {/* Sensor beacon + safe-mode pill */}
-      <div style={{ display: 'flex', justifyContent: 'center', gap: 10,
-                    marginBottom: 4, flexShrink: 0 }}>
-        <SensorBeacon mode={selection.sensor_mode} bleStatus={bleStatus}
+      <div className="session-beacons">
+        <SensorBeacon mode={selection?.sensor_mode ?? 'simulator'} bleStatus={bleStatus}
                       stale={beaconStale} sqi={sqi} />
         {strategy === 'safe' && (
           <span className="pill" style={{ fontSize: 9, opacity: 0.7 }}>SAFE MODE</span>
         )}
       </div>
 
-      {/* HERO: Cosmic Ribbon Wave */}
-      <CosmicRibbonWave rmssd={rmssd} />
+      {/* Hook line */}
+      <div className="session-hook">Live music composed by your body</div>
 
-      {/* PARAMETER MAPPING ROW */}
-      <div style={{ padding: '10px 20px 6px', flexShrink: 0 }}>
+      {/* HERO: Cosmic Ribbon Wave */}
+      <div className="session-hero">
+        <CosmicRibbonWave rmssd={rmssd} />
+      </div>
+
+      {/* PARAMETER MAPPING */}
+      <div className="session-params">
         {[
           { left: 'Heart',     right: 'Tempo',   value: tempoText },
           { left: 'HRV',       right: 'Harmony', value: harmonyText },
           { left: 'Stability', right: 'Texture', value: textureText },
         ].map(({ left, right, value }) => (
-          <div key={left} style={{ display: 'flex', alignItems: 'center',
-                                    justifyContent: 'space-between',
-                                    padding: '5px 0',
-                                    borderBottom: '1px solid rgba(255,255,255,0.04)' }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <span className="secondary" style={{ fontSize: 11 }}>{left}</span>
-              <span style={{ fontSize: 9, color: 'rgba(255,255,255,0.2)' }}>→</span>
-              <span className="secondary" style={{ fontSize: 11 }}>{right}</span>
+          <div key={left} className="session-param-row">
+            <div className="session-param-left">
+              <span>{left}</span>
+              <span className="session-param-arrow">→</span>
+              <span>{right}</span>
             </div>
-            <span className="mono state-color" style={{ fontSize: 11, color: 'var(--state)' }}>
+            <span className="session-param-value state-color" style={{ color: 'var(--state)' }}>
               {value}
             </span>
           </div>
@@ -271,51 +281,48 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
         </MiniCard>
       </div>
 
-      {/* HRV TRAJECTORY STRIP */}
-      <HRVTrajectoryStrip series={hrvSeries} />
-
-      {/* MUSIC PARAM BARS */}
-      <div style={{ padding: '6px 20px 16px', flexShrink: 0 }}>
-        {TIER_GROUPS.map((tier, ti) => (
-          <div key={tier.label} style={{ marginBottom: 10 }}>
-            <div style={{ display: 'flex', alignItems: 'center', marginBottom: 4,
-                          borderLeft: `3px solid ${TIER_COLORS[ti]}`, paddingLeft: 8 }}>
-              <span className="secondary" style={{ fontSize: 9, letterSpacing: '0.15em' }}>
-                {tier.label}
-              </span>
-            </div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4,1fr)', gap: 6 }}>
-              {tier.params.map(p => {
-                const val = frame?.music_params?.[p]
-                return (
-                  <div key={p} title={val != null ? `${p}: ${typeof val === 'number' ? val.toFixed(2) : val}` : p}>
-                    <div className="param-bar">
-                      <span style={{ width: `${normParam(p, val) * 100}%` }} />
-                    </div>
-                    <div className="secondary mono" style={{ fontSize: 10, marginTop: 2,
-                                                              textAlign: 'center', opacity: 0.5 }}>
-                      {PARAM_SHORT[p]}
-                    </div>
-                  </div>
-                )
-              })}
-            </div>
-          </div>
-        ))}
+      {/* HRV TRAJECTORY */}
+      <div className="session-hrv-section">
+        <HRVTrajectoryStrip series={hrvSeries} />
       </div>
+
+      {/* MUSIC PARAM TIERS */}
+      {TIER_GROUPS.map((tier, ti) => (
+        <div key={tier.label} className="session-tier-section" style={{ paddingBottom: 0 }}>
+          <div className="session-tier-label"
+               style={{ borderColor: TIER_COLORS[ti] }}>
+            {tier.label}
+          </div>
+          <div className="session-tier-bars">
+            {tier.params.map(p => {
+              const val = frame?.music_params?.[p]
+              return (
+                <div key={p} title={val != null ? `${p}: ${typeof val === 'number' ? val.toFixed(2) : val}` : p}>
+                  <div className="param-bar">
+                    <span style={{ width: `${normParam(p, val) * 100}%` }} />
+                  </div>
+                  <div className="session-param-short">{PARAM_SHORT[p]}</div>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      ))}
+
+      {/* Reconnect banner — non-blocking, shown during auto-reconnect attempts */}
+      {bleStatus?.status === 'reconnecting' && (
+        <div className="session-reconnect-banner">
+          Reconnecting to H10… ({bleStatus.reconnectAttempt} / 5)
+        </div>
+      )}
 
       {/* BOTTOM BUTTON */}
-      <div style={{ padding: '4px 20px',
-                    paddingBottom: 'max(20px, env(safe-area-inset-bottom))',
-                    flexShrink: 0 }}>
-        <button
-          className="btn btn-ghost"
-          onClick={() => setShowExitModal(true)}
-          style={{ borderRadius: 999, border: '1px solid rgba(255,255,255,0.15)', height: 52 }}
-        >
-          Pause experience
-        </button>
-      </div>
+      <button
+        className="session-pause-btn"
+        onClick={() => setShowExitModal(true)}
+      >
+        Pause experience
+      </button>
 
       {/* Exit confirm modal */}
       {showExitModal && (
@@ -323,18 +330,26 @@ export default function MainSession({ selection, ble, setAnsState, onExit, onBac
           onConfirm={() => {
             setShowExitModal(false)
             wsRef.current?.close()
-            // ws.onclose fires onExit — do NOT call it here directly
           }}
           onCancel={() => setShowExitModal(false)}
         />
       )}
-    </div>
+
+      {/* Reconnect exhaustion modal */}
+      {showReconnectModal && (
+        <ReconnectFailedModal
+          onContinue={() => setShowReconnectModal(false)}
+          onEnd={() => {
+            setShowReconnectModal(false)
+            wsRef.current?.close()
+          }}
+        />
+      )}
+    </motion.div>
   )
 }
 
 // ─── MiniOrb ──────────────────────────────────────────────────────────────────
-// 48×48px pulsing orb for the top-right of the header.
-// Pulse speed scales with live HR (via beatMs / --beat-duration CSS var).
 function MiniOrb({ hr, beatMs, beatKey }) {
   return (
     <div style={{ width: 48, height: 48, position: 'relative', flexShrink: 0 }}
@@ -346,19 +361,16 @@ function MiniOrb({ hr, beatMs, beatKey }) {
             <stop offset="100%" stopColor="var(--state)" stopOpacity="0" />
           </radialGradient>
         </defs>
-        {/* Glow halo */}
         <circle cx="24" cy="24" r="22"
                 fill="url(#mo-glow)"
                 className="heart-pulse state-color"
                 style={{ '--beat-duration': `${beatMs ?? 800}ms`,
                          transformOrigin: '24px 24px' }} />
-        {/* Deep space core */}
         <circle cx="24" cy="24" r="19"
                 fill="var(--bg-deep)"
                 stroke="var(--state)" strokeWidth="1" strokeOpacity="0.6"
                 className="state-color" />
       </svg>
-      {/* HR number centered */}
       <div style={{ position: 'absolute', inset: 0, display: 'flex',
                     alignItems: 'center', justifyContent: 'center',
                     fontFamily: 'var(--font-mono)', fontSize: 12,
@@ -371,12 +383,9 @@ function MiniOrb({ hr, beatMs, beatKey }) {
 }
 
 // ─── CosmicRibbonWave ─────────────────────────────────────────────────────────
-// Full-width SVG hero. 4 bezier ribbon strands morph continuously via SMIL.
-// Amplitude envelope scales with rmssd: high RMSSD → wide ribbons.
 function CosmicRibbonWave({ rmssd }) {
   const amp = Math.min(1, Math.max(0.2, (rmssd ?? 40) / 80))
 
-  // Each strand: baseline Y, control-point offsets, color, weight, animation timing
   const strands = [
     { id: 'crw-s0', y: 112, c1: amp * 52, c2: -(amp * 52), color: '#7C3AED', w: 2.5, op: 0.55, dur: '5s',   begin: '0s'   },
     { id: 'crw-s1', y: 118, c1: -(amp * 42), c2: amp * 38,  color: '#2563EB', w: 2,   op: 0.45, dur: '7s',   begin: '1s'   },
@@ -390,7 +399,6 @@ function CosmicRibbonWave({ rmssd }) {
   const makeFill = (s, sign = 1) =>
     `${makeD(s, sign)} L 430,220 L 0,220 Z`
 
-  // Center strand path (for particle motion) — fixed at initial position
   const centerD = makeD(strands[0])
 
   return (
@@ -406,11 +414,9 @@ function CosmicRibbonWave({ rmssd }) {
               <stop offset="100%" stopColor={s.color} stopOpacity="0" />
             </linearGradient>
           ))}
-          {/* Fixed center path for particle — not animated in defs */}
           <path id="crw-center" d={centerD} fill="none" />
         </defs>
 
-        {/* Render strands bottom-to-top (index 3 first = back) */}
         {[...strands].reverse().map((s, ri) => {
           const i = strands.length - 1 - ri
           const d1 = makeD(s, 1)
@@ -420,7 +426,6 @@ function CosmicRibbonWave({ rmssd }) {
           const ks = '0.45 0.05 0.55 0.95;0.45 0.05 0.55 0.95'
           return (
             <g key={s.id}>
-              {/* Fill area below the ribbon */}
               <path d={f1} fill={`url(#crw-g${i})`} opacity={s.op * 0.7}>
                 <animate attributeName="d"
                   values={`${f1};${f2};${f1}`}
@@ -430,7 +435,6 @@ function CosmicRibbonWave({ rmssd }) {
                   keyTimes="0;0.5;1"
                   keySplines={ks} />
               </path>
-              {/* Ribbon stroke */}
               <path d={d1} fill="none" stroke={s.color} strokeWidth={s.w}
                     strokeLinecap="round" opacity={s.op}>
                 <animate attributeName="d"
@@ -445,7 +449,6 @@ function CosmicRibbonWave({ rmssd }) {
           )
         })}
 
-        {/* Particle orb traveling along center ribbon */}
         <circle r="3" fill="rgba(255,255,255,0.85)"
                 style={{ filter: 'drop-shadow(0 0 5px #7C3AED) drop-shadow(0 0 2px white)' }}>
           <animateMotion dur="4.5s" repeatCount="indefinite" begin="0s" calcMode="paced"
@@ -455,20 +458,12 @@ function CosmicRibbonWave({ rmssd }) {
         </circle>
       </svg>
 
-      {/* Overlay text */}
       <div style={{ position: 'absolute', inset: 0, display: 'flex',
                     flexDirection: 'column', alignItems: 'center',
                     justifyContent: 'center', gap: 10, pointerEvents: 'none' }}>
         <div style={{ color: 'rgba(255,255,255,0.85)', fontSize: 15,
                       fontFamily: 'var(--font-display)', textAlign: 'center', lineHeight: 1.4,
                       textShadow: '0 0 32px rgba(0,0,0,0.95), 0 2px 8px rgba(0,0,0,0.8)' }}>
-          Live music composed by your body
-        </div>
-        <div className="pill"
-             style={{ fontSize: 11, display: 'flex', alignItems: 'center', gap: 6,
-                      animation: 'breathe 3s ease-in-out infinite',
-                      background: 'rgba(12,18,24,0.7)',
-                      border: '1px solid rgba(255,255,255,0.12)' }}>
           ◈ Composing in real time...
         </div>
       </div>
@@ -477,19 +472,14 @@ function CosmicRibbonWave({ rmssd }) {
 }
 
 // ─── HRVTrajectoryStrip ───────────────────────────────────────────────────────
-// Thin sparkline of last 60 RMSSD values with trend text.
 function HRVTrajectoryStrip({ series }) {
   const w = 350, h = 52
 
   const header = (
-    <div style={{ display: 'flex', justifyContent: 'space-between',
-                  alignItems: 'center', marginBottom: 4 }}>
-      <span className="secondary mono" style={{ fontSize: 9, letterSpacing: '0.12em' }}>
-        HRV TRAJECTORY
-      </span>
+    <div className="session-hrv-header">
+      <span>HRV TRAJECTORY</span>
       {series.length > 0 && (
-        <span className="mono state-color"
-              style={{ fontSize: 11, color: 'var(--state)' }}>
+        <span className="state-color" style={{ color: 'var(--state)' }}>
           {Math.round(series[series.length - 1])} ms
         </span>
       )}
@@ -498,10 +488,9 @@ function HRVTrajectoryStrip({ series }) {
 
   if (!series.length) {
     return (
-      <div style={{ padding: '0 20px', marginBottom: 8, flexShrink: 0 }}>
+      <div>
         {header}
-        <div style={{ height: h, background: 'rgba(255,255,255,0.02)',
-                      borderRadius: 4 }} />
+        <div style={{ height: h, background: 'rgba(255,255,255,0.02)', borderRadius: 4 }} />
       </div>
     )
   }
@@ -536,7 +525,7 @@ function HRVTrajectoryStrip({ series }) {
   const lastPt = pts[pts.length - 1]
 
   return (
-    <div style={{ padding: '0 20px', marginBottom: 8, flexShrink: 0 }}>
+    <div>
       {header}
       <div style={{ position: 'relative' }}>
         <svg width="100%" height={h} viewBox={`0 0 ${w} ${h}`}
@@ -556,7 +545,7 @@ function HRVTrajectoryStrip({ series }) {
                   style={{ filter: 'drop-shadow(0 0 3px var(--state))' }} />
         </svg>
       </div>
-      <div className="secondary" style={{ fontSize: 10, marginTop: 3, opacity: 0.65 }}>
+      <div style={{ fontSize: 10, marginTop: 3, opacity: 0.65, color: 'var(--text-secondary)' }}>
         {trendText}
       </div>
     </div>
@@ -571,33 +560,90 @@ function ExitConfirmModal({ onConfirm, onCancel }) {
       style={{
         position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
         zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-        animation: 'enter 200ms ease forwards',
       }}
     >
       <div
         onClick={e => e.stopPropagation()}
         style={{
           width: '100%', maxWidth: 430,
-          background: 'var(--bg-surface)',
-          borderTopLeftRadius: 20, borderTopRightRadius: 20,
-          padding: '24px 20px 40px',
+          background: '#0e0e1a',
+          border: '1px solid var(--border-subtle)',
+          borderBottom: 'none',
+          borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          padding: '20px 20px calc(env(safe-area-inset-bottom, 0px) + 32px)',
         }}
       >
         <div style={{
-          width: 40, height: 4, background: 'var(--text-ghost)',
+          width: 40, height: 4, background: 'var(--border-medium)',
           borderRadius: 2, margin: '0 auto 20px',
         }} />
-        <div className="display" style={{ fontSize: 18, marginBottom: 8 }}>End session?</div>
-        <div className="secondary" style={{ fontSize: 13, marginBottom: 28, lineHeight: 1.5 }}>
+        <div style={{ fontSize: 20, fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: 8 }}>
+          End session?
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28, lineHeight: 1.5 }}>
           Your progress will be saved up to this point.
         </div>
-        <button className="btn state-color" style={{ marginBottom: 10, minHeight: 44 }}
-                onClick={onConfirm}>
+        <button
+          onClick={onConfirm}
+          style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                   background: 'var(--gradient-purple-blue)', color: '#fff',
+                   fontSize: 15, fontWeight: 500, cursor: 'pointer', marginBottom: 10, minHeight: 44 }}>
           End &amp; save
         </button>
-        <button className="btn btn-ghost state-color" style={{ minHeight: 44 }}
-                onClick={onCancel}>
+        <button
+          onClick={onCancel}
+          style={{ width: '100%', padding: '14px', borderRadius: 12,
+                   border: '1px solid var(--border-medium)', background: 'transparent',
+                   color: 'var(--text-secondary)', fontSize: 15, cursor: 'pointer', minHeight: 44 }}>
           Keep going
+        </button>
+      </div>
+    </div>
+  )
+}
+
+// ─── ReconnectFailedModal ─────────────────────────────────────────────────────
+function ReconnectFailedModal({ onContinue, onEnd }) {
+  return (
+    <div
+      style={{
+        position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.75)',
+        zIndex: 200, display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
+      }}
+    >
+      <div
+        style={{
+          width: '100%', maxWidth: 430,
+          background: '#0e0e1a',
+          border: '1px solid var(--border-subtle)',
+          borderBottom: 'none',
+          borderTopLeftRadius: 24, borderTopRightRadius: 24,
+          padding: '20px 20px calc(env(safe-area-inset-bottom, 0px) + 32px)',
+        }}
+      >
+        <div style={{
+          width: 40, height: 4, background: 'var(--border-medium)',
+          borderRadius: 2, margin: '0 auto 20px',
+        }} />
+        <div style={{ fontSize: 20, fontWeight: 600, fontFamily: 'var(--font-display)', marginBottom: 8 }}>
+          Lost connection to H10
+        </div>
+        <div style={{ fontSize: 13, color: 'var(--text-muted)', marginBottom: 28, lineHeight: 1.5 }}>
+          Couldn't reconnect after 5 attempts. Music is still playing — you can continue without the sensor, or end the session.
+        </div>
+        <button
+          onClick={onContinue}
+          style={{ width: '100%', padding: '14px', borderRadius: 12, border: 'none',
+                   background: 'var(--gradient-purple-blue)', color: '#fff',
+                   fontSize: 15, fontWeight: 500, cursor: 'pointer', marginBottom: 10, minHeight: 44 }}>
+          Continue without sensor
+        </button>
+        <button
+          onClick={onEnd}
+          style={{ width: '100%', padding: '14px', borderRadius: 12,
+                   border: '1px solid var(--border-medium)', background: 'transparent',
+                   color: 'var(--text-secondary)', fontSize: 15, cursor: 'pointer', minHeight: 44 }}>
+          End session
         </button>
       </div>
     </div>
@@ -607,7 +653,7 @@ function ExitConfirmModal({ onConfirm, onCancel }) {
 // ─── SensorBeacon ─────────────────────────────────────────────────────────────
 function SensorBeacon({ mode, bleStatus, stale, sqi }) {
   let color = 'var(--text-secondary)'
-  let label = mode === 'simulator' ? 'SIM' : mode.toUpperCase()
+  const label = mode === 'simulator' ? 'SIM' : mode.toUpperCase()
   if (mode === 'polar' && bleStatus) {
     if (bleStatus.status === 'connected' && !stale) color = '#00c9a7'
     else if (stale) color = '#e25555'
@@ -635,8 +681,8 @@ function MiniCard({ title, children }) {
                   border: '1px solid rgba(255,255,255,0.06)',
                   borderRadius: 8, padding: 8, minHeight: 90,
                   display: 'flex', flexDirection: 'column' }}>
-      <div className="secondary" style={{ fontSize: 8, letterSpacing: '0.1em',
-                                           marginBottom: 4 }}>{title}</div>
+      <div style={{ fontSize: 8, letterSpacing: '0.1em', color: 'var(--text-muted)',
+                    marginBottom: 4 }}>{title}</div>
       <div style={{ flex: 1, display: 'flex', alignItems: 'center',
                     justifyContent: 'center' }}>{children}</div>
     </div>
@@ -645,7 +691,7 @@ function MiniCard({ title, children }) {
 
 // ─── PoincareMini ─────────────────────────────────────────────────────────────
 function PoincareMini({ pairs, sd1, sd2 }) {
-  if (!pairs.length) return <span className="secondary" style={{ fontSize: 9 }}>—</span>
+  if (!pairs.length) return <span style={{ fontSize: 9, color: 'var(--text-muted)' }}>—</span>
   const w = 80, h = 70
   const flat = pairs.flat()
   const min = Math.min(...flat), max = Math.max(...flat)
@@ -675,10 +721,8 @@ function PoincareMini({ pairs, sd1, sd2 }) {
 }
 
 // ─── AvMini ───────────────────────────────────────────────────────────────────
-// Arousal-Valence crosshair. Inputs are −1..1 (Russell circumplex affect values).
 function AvMini({ arousal, valence, quadrant }) {
   const w = 80, h = 70
-  // Normalize −1..1 → pixel coordinates
   const x = valence != null ? ((valence + 1) / 2) * (w - 8) + 4 : null
   const y = arousal != null ? (1 - (arousal + 1) / 2) * (h - 8) + 4 : null
   return (
@@ -692,8 +736,8 @@ function AvMini({ arousal, valence, quadrant }) {
           <circle cx={x} cy={y} r={4} fill="var(--state)" className="state-color" />
         )}
       </svg>
-      <div className="secondary"
-           style={{ fontSize: 8, marginTop: 2, textTransform: 'uppercase', opacity: 0.6 }}>
+      <div style={{ fontSize: 8, marginTop: 2, textTransform: 'uppercase',
+                    opacity: 0.6, color: 'var(--text-muted)' }}>
         {quadrant || '—'}
       </div>
     </div>
@@ -701,11 +745,10 @@ function AvMini({ arousal, valence, quadrant }) {
 }
 
 // ─── MpcMini ──────────────────────────────────────────────────────────────────
-// Music-fit circular arc. score is 0..1 (1 = perfect fit).
 function MpcMini({ score }) {
   const pct = score != null ? Math.max(0, Math.min(1, score)) : null
   const scoreNum = pct != null ? Math.round(pct * 100) : null
-  const color = scoreNum == null ? 'var(--text-ghost)'
+  const color = scoreNum == null ? 'var(--text-muted)'
     : scoreNum >= 75 ? '#00C9A7'
     : scoreNum >= 50 ? '#F5A623'
     : '#E8622A'
@@ -718,17 +761,14 @@ function MpcMini({ score }) {
   return (
     <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
       <svg width="60" height="60" viewBox="0 0 60 60">
-        {/* Track */}
         <circle cx="30" cy="30" r={R} fill="none"
                 stroke="rgba(255,255,255,0.07)" strokeWidth="4" />
-        {/* Progress arc — starts at top (−90°) */}
         <circle cx="30" cy="30" r={R} fill="none"
                 stroke={color} strokeWidth="4"
                 strokeDasharray={`${dash} ${gap}`}
                 strokeLinecap="round"
                 transform="rotate(-90 30 30)"
                 style={{ transition: 'stroke-dasharray 600ms ease-in-out' }} />
-        {/* Score label */}
         <text x="30" y="30" textAnchor="middle" dominantBaseline="central"
               fill="var(--text-primary)"
               fontSize="11" fontFamily="var(--font-mono)" fontWeight="500">

@@ -1,180 +1,315 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useRef, useState } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { useApp } from '../context/AppContext.jsx'
 import { RrProcessor } from '../engines/rrProcessor.js'
 import { store } from '../store/sessionStore.js'
 import HistoryPanel from './HistoryPanel.jsx'
+import BreathingOrb from './BreathingOrb.jsx'
+import AnimatedNumber from './AnimatedNumber.jsx'
+import CosmicBackground from './CosmicBackground.jsx'
+import '../styles/dashboard.css'
 
 const SESSIONS = [
-  { id: 'calm',      name: 'Calm',      copy: 'The storm has passed.',        color: 'var(--ventral)' },
-  { id: 'energy',    name: 'Energy',    copy: 'Move without the alarm.',      color: 'var(--sympathetic-h)' },
-  { id: 'focus',     name: 'Focus',     copy: 'A mind pointed like a beam.',  color: 'var(--sympathetic-h)' },
-  { id: 'recovery',  name: 'Recovery',  copy: 'You gave a lot. Come back.',   color: 'var(--ventral)' },
-  { id: 'presence',  name: 'Presence',  copy: 'No destination. Just here.',   color: 'var(--ventral)' },
-  { id: 'adhd_flow', name: 'ADHD Flow', copy: 'Channel it before it scatters.', color: 'var(--sympathetic-h)' },
+  { id: 'calm',      name: '💚 Calm',      copy: 'The storm has passed.',          color: 'var(--ventral)' },
+  { id: 'energy',    name: '🔥 Energy',    copy: 'Move without the alarm.',        color: 'var(--sympathetic-h)' },
+  { id: 'focus',     name: '📘 Focus',     copy: 'A mind pointed like a beam.',    color: 'var(--sympathetic-h)' },
+  { id: 'recovery',  name: '🌊 Recovery',  copy: 'You gave a lot. Come back.',     color: 'var(--ventral)' },
+  { id: 'presence',  name: '✨ Presence',  copy: 'No destination. Just here.',     color: 'var(--ventral)' },
+  { id: 'adhd_flow', name: '⚡ ADHD Flow', copy: 'Channel it before it scatters.', color: 'var(--sympathetic-h)' },
 ]
+
 const DURATIONS = [
   { label: '10 min', value: 600 },
   { label: '20 min', value: 1200 },
   { label: 'Open',   value: 3600 },
 ]
 
-export default function DashboardScreen({ sensorMode, ble, onBack, onStartSession }) {
-  const [hr, setHr] = useState(null)
-  const [rmssd, setRmssd] = useState(null)
-  const [beatMs, setBeatMs] = useState(1000)
-  const [beatKey, setBeatKey] = useState(0)
+// Music reaction flavor text per session type
+const MUSIC_FLAVOR = {
+  calm:      { name: 'Ambient Drift',    desc: 'Slow tempo · open harmonics · warm textures' },
+  energy:    { name: 'Rhythmic Pulse',   desc: 'Rising BPM · bright tones · spatial width' },
+  focus:     { name: 'Binaural Flow',    desc: 'Alpha entrainment · minimal complexity · coherent' },
+  recovery:  { name: 'Vagal Resonance',  desc: 'Low carrier · breath sync · consonant chords' },
+  presence:  { name: 'Lydian Space',     desc: 'Major mode · high coherence · soma 60Hz' },
+  adhd_flow: { name: 'Anchored Drive',   desc: 'Dynamic rhythm · beta binaural · micro-variation' },
+}
+
+const ease = [0.16, 1, 0.3, 1]
+
+function getGreeting() {
+  const h = new Date().getHours()
+  if (h < 12) return 'Good morning'
+  if (h < 17) return 'Good afternoon'
+  return 'Good evening'
+}
+
+export default function DashboardScreen() {
+  const navigate = useNavigate()
+  const { ble, sensorMode, ansState, setBle, setSelection: setAppSelection } = useApp()
+
+  const onBack = () => { try { ble?.disconnect?.() } catch {} setBle(null); navigate('/') }
+  const onStartSession = (sel) => { setAppSelection(sel); navigate('/session') }
+
+  const [hr, setHr]             = useState(null)
+  const [rmssd, setRmssd]       = useState(null)
+  const [beatMs, setBeatMs]     = useState(1000)
+  const [beatKey, setBeatKey]   = useState(0)
   const [historyOpen, setHistoryOpen] = useState(false)
   const [pickerSession, setPickerSession] = useState(null)
+  const [activeSession, setActiveSession] = useState(null)
   const procRef = useRef(null)
+
   const s = store.get()
   const history = (s.history || []).slice(0, 5)
+  const lastSessionType = s.last_session_type || 'calm'
+  const musicFlavor = MUSIC_FLAVOR[activeSession?.id ?? lastSessionType] ?? MUSIC_FLAVOR.calm
 
-  // Live HRV from real sensor OR simulator random-walk.
+  const sensorLabel =
+    sensorMode === 'polar' ? 'Polar H10'
+    : sensorMode === 'whoop' ? 'WHOOP'
+    : 'Simulator'
+
+  // Live HRV from real sensor OR simulator random-walk
   useEffect(() => {
     const proc = new RrProcessor()
     procRef.current = proc
-
-    // Metrics readout every 1s.
     const metricsIv = setInterval(() => {
       const m = proc.metrics()
-      if (m) {
-        setHr(m.hr)
-        setRmssd(m.rmssd)
-      }
+      if (m) { setHr(m.hr); setRmssd(m.rmssd) }
     }, 1000)
 
-    let simIv = null
-    let currentRr = 1000 // 60 BPM baseline
+    let simTimeout = null
+    let currentRr = 1000
 
     if (ble && ble.setOnRr) {
-      // Real sensor: tap RRs off the existing BLE instance.
       ble.setOnRr((rr) => {
         proc.push(rr)
-        const dur = Math.max(300, Math.min(1500, rr))
-        setBeatMs(dur)
+        setBeatMs(Math.max(300, Math.min(1500, rr)))
         setBeatKey(k => k + 1)
       })
     } else {
-      // Simulator or no BLE: fake HRV-ish pulse, 58–64 BPM random walk.
       const scheduleNext = () => {
-        const jitter = (Math.random() - 0.5) * 60 // ±30 ms
-        currentRr = Math.max(935, Math.min(1035, currentRr + jitter)) // 58–64 BPM
+        const jitter = (Math.random() - 0.5) * 60
+        currentRr = Math.max(935, Math.min(1035, currentRr + jitter))
         proc.push(currentRr)
         setBeatMs(currentRr)
         setBeatKey(k => k + 1)
-        simIv = setTimeout(scheduleNext, currentRr)
+        simTimeout = setTimeout(scheduleNext, currentRr)
       }
       scheduleNext()
     }
 
     return () => {
       clearInterval(metricsIv)
-      if (simIv) clearTimeout(simIv)
-      if (ble && ble.setOnRr) {
-        ble.setOnRr(() => {}) // release the sink, don't disconnect
-      }
+      if (simTimeout) clearTimeout(simTimeout)
+      if (ble && ble.setOnRr) ble.setOnRr(() => {})
     }
   }, [ble])
 
-  const sensorLabel =
-    sensorMode === 'polar' ? 'POLAR H10'
-    : sensorMode === 'whoop' ? 'WHOOP'
-    : 'SIMULATOR'
+  // Derive HRV trend from rmssd direction
+  const trend = rmssd == null ? '—' : rmssd > 55 ? '↑' : rmssd > 40 ? '~' : '↓'
+  const trendColor = rmssd == null ? 'var(--text-muted)'
+    : rmssd > 55 ? 'var(--accent-teal)'
+    : rmssd > 40 ? 'var(--accent-amber)'
+    : 'var(--accent-rose)'
 
   return (
-    <div className="screen cosmic-bg" style={{ minHeight: '100dvh', position: 'relative', padding: '24px 20px 40px' }}>
+    <motion.div
+      className="dash-wrapper"
+      initial={{ opacity: 0, y: 20 }}
+      animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease } }}
+      exit={{ opacity: 0, y: -10, transition: { duration: 0.4 } }}
+    >
+      <CosmicBackground />
+
       {/* Header */}
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
-        <button className="back-arrow" onClick={onBack} aria-label="Back">←</button>
-        <div className="display" style={{ fontSize: 13, letterSpacing: '0.36em', color: 'var(--text-secondary)' }}>VAGUS</div>
-        <div className="pill" style={{ fontSize: 9, display: 'inline-flex', alignItems: 'center', gap: 6 }}>
-          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--state)', boxShadow: '0 0 6px var(--state)' }} />
-          {sensorLabel}
+      <div className="dash-header">
+        <button className="dash-header-icon" onClick={onBack} aria-label="Back to home">☰</button>
+        <div className="dash-title">Vagus</div>
+        <div className="dash-header-icon dash-bell" aria-label="Notifications">
+          🔔
+          <div className="dash-notif-dot" />
         </div>
-        <div aria-hidden="true" style={{ width: 44 }} />
       </div>
 
-      {/* Hero: beating heart */}
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', position: 'relative', height: 280, marginBottom: 12 }}>
-        <svg width="260" height="260" style={{ position: 'absolute' }}>
-          <circle cx="130" cy="130" r="120" fill="none" stroke="var(--state)" strokeWidth="0.6" strokeDasharray="2 8" opacity="0.4" className="state-color" />
-          <circle cx="130" cy="130" r="104" fill="none" stroke="var(--state)" strokeWidth="1" opacity="0.3" className="state-color" />
-        </svg>
+      {/* Greeting */}
+      <motion.div
+        className="dash-greeting"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.6, ease, delay: 0.1 } }}
+      >
+        <div className="dash-greeting-name">{getGreeting()}</div>
+        <div className="dash-greeting-sub">Your body is the instrument.</div>
+      </motion.div>
+
+      {/* Connection status pill */}
+      <motion.div
+        className="dash-conn-pill"
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.6, delay: 0.2 } }}
+      >
+        <div>
+          <div className="dash-conn-pill-label">Your body drives the music in real time</div>
+          <div className="dash-conn-sensor">
+            <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-teal)', display: 'inline-block' }} />
+            Connected · {sensorLabel}
+          </div>
+        </div>
+        <div className="dash-live-badge">
+          <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--accent-rose)', display: 'inline-block', animation: 'nerve-drift 1.5s ease-in-out infinite' }} />
+          LIVE
+        </div>
+      </motion.div>
+
+      {/* Central BreathingOrb */}
+      <motion.div
+        className="dash-orb-section"
+        initial={{ opacity: 0, scale: 0.9 }}
+        animate={{ opacity: 1, scale: 1, transition: { duration: 0.8, ease, delay: 0.3 } }}
+      >
         <div
           key={beatKey}
-          className="heart-pulse state-color"
-          style={{ '--beat-duration': `${beatMs}ms`, filter: 'drop-shadow(0 0 14px var(--state))' }}
+          className="heart-pulse"
+          style={{ '--beat-duration': `${beatMs}ms` }}
         >
-          <HeartMark />
+          <BreathingOrb
+            hrvValue={rmssd}
+            label="RMSSD"
+            stateKey={ansState}
+            size="large"
+          />
         </div>
-        <div style={{ position: 'absolute', top: 40, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
-          <div className="mono" style={{ fontSize: 54, fontWeight: 300, lineHeight: 1 }}>
-            {hr != null ? Math.round(hr) : '—'}
+        <div className="dash-orb-loop-label">Body → Music → Body</div>
+        <div className="dash-orb-loop-sub">● LIVE LOOP</div>
+      </motion.div>
+
+      {/* Stats row */}
+      <motion.div
+        className="dash-stats"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.6, ease, delay: 0.4 } }}
+      >
+        <div className="dash-stat">
+          <div className="dash-stat-label">HR</div>
+          <div className="dash-stat-value">
+            <AnimatedNumber value={hr ?? 0} duration={800} />
           </div>
-          <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.2em', marginTop: 2 }}>BPM</div>
+          <div className="dash-stat-unit">BPM</div>
         </div>
-        <div style={{ position: 'absolute', bottom: 34, left: 0, right: 0, textAlign: 'center', pointerEvents: 'none' }}>
-          <div className="mono" style={{ fontSize: 18 }}>{rmssd != null ? Math.round(rmssd) : '—'}<span className="secondary" style={{ fontSize: 10, marginLeft: 4 }}>ms</span></div>
-          <div className="secondary" style={{ fontSize: 9, letterSpacing: '0.2em' }}>RMSSD</div>
+        <div className="dash-stat">
+          <div className="dash-stat-label">RMSSD</div>
+          <div className="dash-stat-value">
+            <AnimatedNumber value={rmssd ?? 0} duration={800} />
+          </div>
+          <div className="dash-stat-unit">MS</div>
         </div>
-      </div>
+        <div className="dash-stat">
+          <div className="dash-stat-label">TREND</div>
+          <div className="dash-stat-value" style={{ color: trendColor }}>{trend}</div>
+          <div className="dash-stat-unit">HRV</div>
+        </div>
+      </motion.div>
 
-      {/* Session grid */}
-      <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.15em', marginTop: 4, marginBottom: 10 }}>WHAT DOES YOUR BODY NEED?</div>
-      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 10 }}>
-        {SESSIONS.map(sess => (
-          <button
-            key={sess.id}
-            onClick={() => setPickerSession(sess)}
-            className="state-color"
-            style={{
-              textAlign: 'left',
-              background: 'var(--bg-surface)',
-              border: '1px solid rgba(255,255,255,0.05)',
-              borderLeft: `3px solid ${sess.color}`,
-              borderRadius: 12,
-              padding: '12px 14px',
-              color: 'var(--text-primary)',
-              cursor: 'pointer',
-            }}
-          >
-            <div style={{ fontSize: 14, fontWeight: 500 }}>{sess.name}</div>
-            <div className="secondary" style={{ fontSize: 10, marginTop: 4, fontStyle: 'italic' }}>{sess.copy}</div>
-          </button>
-        ))}
-      </div>
+      {/* Music reaction card */}
+      <motion.div
+        className="dash-music-card"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.6, ease, delay: 0.45 } }}
+        whileHover={{ scale: 1.01 }}
+      >
+        <div className="dash-music-tag">MUSIC REACTION</div>
+        <div className="dash-music-name">{musicFlavor.name}</div>
+        <div className="dash-music-sub">{musicFlavor.desc}</div>
+      </motion.div>
 
-      {/* History strip */}
+      {/* CTA card */}
+      <motion.div
+        className="dash-cta"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0, transition: { duration: 0.6, ease, delay: 0.5 } }}
+      >
+        <div>
+          <div className="dash-cta-label">Let your body<br />take over</div>
+          <div className="dash-cta-sub">20 min recommended</div>
+        </div>
+        <motion.button
+          className="dash-play-btn"
+          onClick={() => {
+            // Default to recovery session if none selected
+            const sess = activeSession ?? SESSIONS.find(s => s.id === 'recovery')
+            setPickerSession(sess)
+          }}
+          animate={{ boxShadow: ['0 0 20px rgba(167,139,250,0.4)', '0 0 36px rgba(167,139,250,0.7)', '0 0 20px rgba(167,139,250,0.4)'] }}
+          transition={{ duration: 3, repeat: Infinity, ease: 'easeInOut' }}
+          whileTap={{ scale: 0.92 }}
+        >
+          ▶
+        </motion.button>
+      </motion.div>
+
+      {/* Session type pills */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1, transition: { duration: 0.6, delay: 0.55 } }}
+      >
+        <div className="dash-pills-label">SESSION TYPE</div>
+        <div className="dash-pills-scroll">
+          {SESSIONS.map((s, i) => (
+            <motion.button
+              key={s.id}
+              className={`dash-pill-btn${activeSession?.id === s.id ? ' active' : ''}`}
+              onClick={() => { setActiveSession(s); setPickerSession(s) }}
+              initial={{ opacity: 0, x: -10 }}
+              animate={{ opacity: 1, x: 0, transition: { duration: 0.4, ease, delay: 0.6 + i * 0.05 } }}
+              whileTap={{ scale: 0.95 }}
+            >
+              {s.name}
+            </motion.button>
+          ))}
+        </div>
+      </motion.div>
+
+      {/* Previous sessions */}
       {history.length > 0 && (
-        <div style={{ marginTop: 22 }}>
-          <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.15em', marginBottom: 8, display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span>RECENT</span>
-            <button onClick={() => setHistoryOpen(true)} className="secondary" style={{
-              background: 'none', border: 'none', color: 'var(--text-secondary)',
-              fontSize: 10, cursor: 'pointer', letterSpacing: '0.1em',
-              padding: '10px 12px', minHeight: 44, display: 'flex', alignItems: 'center'
-            }}>ALL →</button>
+        <motion.div
+          className="dash-sessions"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 0.6, delay: 0.7 } }}
+        >
+          <div className="dash-sessions-header">
+            <div className="dash-sessions-title">Previous Sessions</div>
+            <button className="dash-sessions-see-all" onClick={() => setHistoryOpen(true)}>See All →</button>
           </div>
-          <div style={{ display: 'flex', gap: 8, overflowX: 'auto', paddingBottom: 4 }}>
-            {history.map((h, i) => (
-              <div key={i} style={{
-                flexShrink: 0, minWidth: 120, background: 'var(--bg-surface)',
-                border: '1px solid rgba(255,255,255,0.05)', borderRadius: 10, padding: '10px 12px',
-              }}>
-                <div className="secondary mono" style={{ fontSize: 9 }}>{new Date(h.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}</div>
-                <div style={{ fontSize: 12, marginTop: 4, textTransform: 'capitalize' }}>{h.session}</div>
-                <div className="mono" style={{ fontSize: 11, marginTop: 2, color: h.delta_rmssd >= 0 ? 'var(--ventral)' : 'var(--sympathetic-a)' }}>
-                  {h.delta_rmssd >= 0 ? '↑' : '↓'} {Math.abs(h.delta_rmssd).toFixed(0)}ms
+          {history.map((h, i) => (
+            <motion.div
+              key={i}
+              className="dash-history-card"
+              whileHover={{ scale: 1.01 }}
+            >
+              <div className="dash-history-left">
+                <div className="dash-history-session">🔵 {h.session} Session</div>
+                <div className="dash-history-meta">
+                  {new Date(h.ts).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })} · {Math.round((h.duration_s || 600) / 60)} min
                 </div>
               </div>
-            ))}
-          </div>
-        </div>
+              <div>
+                <div className="dash-history-delta" style={{ color: h.delta_rmssd >= 0 ? 'var(--accent-teal)' : 'var(--accent-rose)' }}>
+                  {h.delta_rmssd >= 0 ? '+' : ''}{Math.round(h.delta_rmssd ?? 0)}ms
+                </div>
+                <div className="dash-history-delta-label">RMSSD Δ</div>
+              </div>
+            </motion.div>
+          ))}
+        </motion.div>
       )}
 
       {historyOpen && <HistoryPanel onClose={() => setHistoryOpen(false)} />}
+
       {pickerSession && (
         <DurationSheet
           session={pickerSession}
+          sensorMode={sensorMode}
           onCancel={() => setPickerSession(null)}
           onPick={(duration_s) => {
             setPickerSession(null)
@@ -182,65 +317,41 @@ export default function DashboardScreen({ sensorMode, ble, onBack, onStartSessio
           }}
         />
       )}
-    </div>
+    </motion.div>
   )
 }
 
-function DurationSheet({ session, onCancel, onPick }) {
+function DurationSheet({ session, sensorMode, onCancel, onPick }) {
   return (
-    <div onClick={onCancel} style={{
-      position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.65)', zIndex: 100,
-      display: 'flex', alignItems: 'flex-end', justifyContent: 'center',
-      animation: 'enter 300ms ease forwards',
-    }}>
-      <div onClick={e => e.stopPropagation()} style={{
-        width: '100%', maxWidth: 430, background: 'var(--bg-surface)',
-        borderTopLeftRadius: 20, borderTopRightRadius: 20, padding: '20px 20px 32px',
-      }}>
-        <div style={{ width: 40, height: 4, background: 'var(--text-ghost)', borderRadius: 2, margin: '0 auto 18px' }} />
-        <div className="display" style={{ fontSize: 20 }}>{session.name}</div>
-        <div className="secondary" style={{ fontSize: 12, marginTop: 4, fontStyle: 'italic', marginBottom: 22 }}>{session.copy}</div>
-        <div className="secondary" style={{ fontSize: 10, letterSpacing: '0.15em', marginBottom: 10 }}>DURATION</div>
-        <div style={{ display: 'flex', gap: 8 }}>
+    <motion.div
+      className="dur-sheet-backdrop"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onCancel}
+    >
+      <motion.div
+        className="dur-sheet"
+        initial={{ y: '100%' }}
+        animate={{ y: 0, transition: { duration: 0.4, ease: [0.16, 1, 0.3, 1] } }}
+        onClick={e => e.stopPropagation()}
+      >
+        <div className="dur-sheet-handle" />
+        <div className="dur-sheet-title">{session.name}</div>
+        <div className="dur-sheet-copy">{session.copy}</div>
+        <div className="dur-sheet-dur-label">DURATION</div>
+        <div className="dur-sheet-btns">
           {DURATIONS.map(d => (
             <button
               key={d.value}
+              className="dur-sheet-btn"
               onClick={() => onPick(d.value)}
-              className="pill state-color"
-              style={{ flex: 1, background: 'var(--bg-elevated)' }}
-            >{d.label}</button>
+            >
+              {d.label}
+            </button>
           ))}
         </div>
-      </div>
-    </div>
-  )
-}
-
-function HeartMark() {
-  return (
-    <svg width="120" height="120" viewBox="0 0 120 120" fill="none">
-      <defs>
-        <linearGradient id="heart-grad" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"  stopColor="#6EE7D2" />
-          <stop offset="100%" stopColor="#00C9A7" />
-        </linearGradient>
-      </defs>
-      <path
-        d="M60 100
-           C 20 76, 8 52, 22 34
-           C 34 19, 52 22, 60 40
-           C 68 22, 86 19, 98 34
-           C 112 52, 100 76, 60 100 Z"
-        fill="url(#heart-grad)" opacity="0.92"
-      />
-      <path
-        d="M60 100
-           C 20 76, 8 52, 22 34
-           C 34 19, 52 22, 60 40
-           C 68 22, 86 19, 98 34
-           C 112 52, 100 76, 60 100 Z"
-        fill="none" stroke="#E8EDF2" strokeWidth="0.6" opacity="0.3"
-      />
-    </svg>
+      </motion.div>
+    </motion.div>
   )
 }

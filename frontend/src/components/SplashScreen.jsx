@@ -1,143 +1,91 @@
 import React, { useEffect } from 'react'
+import { useNavigate } from 'react-router-dom'
+import { motion } from 'framer-motion'
+import { useApp } from '../context/AppContext.jsx'
+import CosmicBackground from './CosmicBackground.jsx'
+import FlowingWaves from './FlowingWaves.jsx'
 import { store } from '../store/sessionStore.js'
+import '../styles/splash.css'
 
-// First screen. No chrome. Just the mark + headline + Begin.
-export default function SplashScreen({ onBegin, setAnsState }) {
-  useEffect(() => { setAnsState && setAnsState('ventral_vagal') }, [setAnsState])
+const ease = [0.16, 1, 0.3, 1]
+
+const fadeUp = (delay = 0) => ({
+  initial:  { opacity: 0, y: 20 },
+  animate:  { opacity: 1, y: 0, transition: { duration: 0.8, ease, delay } },
+})
+
+export default function SplashScreen() {
+  const navigate = useNavigate()
+  const { setAnsState } = useApp()
+
+  useEffect(() => { setAnsState('ventral_vagal') }, [setAnsState])
+
   const lastInsight = store.get().last_insight
 
   return (
-    <div className="screen cosmic-bg" style={{ minHeight: '100dvh', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'space-between', padding: 'calc(env(safe-area-inset-top, 0px) + 60px) 24px calc(env(safe-area-inset-bottom, 0px) + 48px)', position: 'relative' }}>
-      <div style={{ textAlign: 'center' }}>
-        <div className="display" style={{ fontSize: 14, letterSpacing: '0.42em', color: 'var(--text-secondary)' }}>VAGUS</div>
-      </div>
-
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 40 }}>
-        <VagusNerveAnimated />
-        <div style={{ textAlign: 'center', maxWidth: 320 }}>
-          <div className="display" style={{ fontSize: 34, lineHeight: 1.15, fontWeight: 500, letterSpacing: '-0.01em' }}>
-            Listen to<br/>your body.
-          </div>
-          <div className="secondary" style={{ fontSize: 13, marginTop: 18, fontStyle: lastInsight ? 'italic' : 'normal', minHeight: 20 }}>
-            {lastInsight || 'Music that follows your nervous system.'}
-          </div>
-        </div>
-      </div>
-
-      <button className="btn state-color" style={{ maxWidth: 280 }} onClick={onBegin}>Begin</button>
-    </div>
-  )
-}
-
-function VagusNerveAnimated() {
-  return (
-    <svg
-      width="220" height="280" viewBox="0 0 220 280"
-      className="nerve-mark"
-      role="img" aria-label="Vagus nerve anatomy diagram"
-      style={{ filter: 'drop-shadow(0 0 24px rgba(0,201,167,0.35))' }}
+    <motion.div
+      className="splash-wrapper"
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0, y: -10, transition: { duration: 0.4 } }}
+      transition={{ duration: 0.5 }}
     >
-      <defs>
-        <radialGradient id="vna-halo" cx="50%" cy="50%" r="50%">
-          <stop offset="0%"   stopColor="rgba(0,201,167,0.22)" />
-          <stop offset="70%"  stopColor="rgba(0,201,167,0.04)" />
-          <stop offset="100%" stopColor="rgba(0,201,167,0)" />
-        </radialGradient>
-        <linearGradient id="vna-nerve" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%"   stopColor="#6EE7D2" />
-          <stop offset="50%"  stopColor="#00C9A7" />
-          <stop offset="100%" stopColor="#4A7FA5" />
-        </linearGradient>
-        <path id="vna-trunk"     d="M110,15 C130,55 90,85 110,120 C130,155 90,185 110,215" fill="none" />
-        <path id="vna-cranial-l" d="M110,30 Q80,42 72,60" fill="none" />
-        <path id="vna-cranial-r" d="M110,30 Q140,42 148,60" fill="none" />
-        <path id="vna-heart-l"   d="M110,88 Q78,98 62,112" fill="none" />
-        <path id="vna-lung-r"    d="M110,105 Q145,112 162,130" fill="none" />
-        <path id="vna-gut-l"     d="M110,215 Q70,242 56,258" fill="none" />
-        <path id="vna-heart-r"   d="M110,88 Q142,96 158,112" fill="none" />
-        <path id="vna-lung-l"    d="M110,105 Q75,115 58,132" fill="none" />
-      </defs>
+      <CosmicBackground />
 
-      <circle cx="110" cy="140" r="108" fill="url(#vna-halo)" />
-      <circle cx="110" cy="140" r="96"  fill="none" stroke="rgba(0,201,167,0.18)" strokeWidth="0.6" strokeDasharray="2 6" />
+      <div className="splash-card glass-card">
+        {/* "Listening…" label */}
+        <motion.div className="splash-listening" {...fadeUp(0.3)}>
+          Let vagus create the magic…
+        </motion.div>
 
-      <path d="M110,30 Q80,42 72,60"   stroke="url(#vna-nerve)" strokeWidth="1.2" fill="none" opacity="0.75" strokeLinecap="round" />
-      <path d="M110,30 Q140,42 148,60" stroke="url(#vna-nerve)" strokeWidth="1.2" fill="none" opacity="0.75" strokeLinecap="round" />
-      <path d="M110,30 Q96,48 92,68"   stroke="url(#vna-nerve)" strokeWidth="1"   fill="none" opacity="0.55" strokeLinecap="round" />
-      <path d="M110,30 Q124,48 128,68" stroke="url(#vna-nerve)" strokeWidth="1"   fill="none" opacity="0.55" strokeLinecap="round" />
+        {/* Flowing waveform */}
+        <motion.div
+          className="splash-waves"
+          initial={{ opacity: 0 }}
+          animate={{ opacity: 1, transition: { duration: 1, delay: 0.5 } }}
+        >
+          <FlowingWaves
+            colors={['var(--accent-teal)', 'var(--accent-amber)', 'var(--accent-purple)']}
+            opacity={0.45}
+            height={56}
+          />
+        </motion.div>
 
-      <path d="M110,15 C130,55 90,85 110,120 C130,155 90,185 110,215"
-            stroke="url(#vna-nerve)" strokeWidth="2.2" fill="none" strokeLinecap="round" />
+        {/* Headline */}
+        <motion.div className="splash-headline" {...fadeUp(0.8)}>
+          Listen to<br />your body.
+        </motion.div>
 
-      <path d="M110,88 Q78,98 62,112"   stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.70" strokeLinecap="round" />
-      <path d="M110,88 Q142,96 158,112" stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.70" strokeLinecap="round" />
+        {/* Body copy */}
+        <motion.div className="splash-body" {...fadeUp(1.2)}>
+          {lastInsight
+            ? `"${lastInsight}"`
+            : 'Your heart, breath, and nervous system are already shaping sound.'}
+        </motion.div>
 
-      <path d="M110,105 Q75,115 58,132"   stroke="url(#vna-nerve)" strokeWidth="1" fill="none" opacity="0.60" strokeLinecap="round" />
-      <path d="M110,105 Q145,112 162,130" stroke="url(#vna-nerve)" strokeWidth="1" fill="none" opacity="0.60" strokeLinecap="round" />
+        <motion.div className="splash-sub" {...fadeUp(1.4)}>
+          No two sessions will ever sound the same.
+        </motion.div>
 
-      <path d="M110,148 Q90,152 80,155"   stroke="url(#vna-nerve)" strokeWidth="1" fill="none" opacity="0.50" strokeLinecap="round" />
-      <path d="M110,148 Q130,152 140,155" stroke="url(#vna-nerve)" strokeWidth="1" fill="none" opacity="0.50" strokeLinecap="round" />
+        {/* CTA */}
+        <motion.div
+          style={{ width: '100%' }}
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0, transition: { duration: 0.8, ease, delay: 1.8 } }}
+        >
+          <button
+            className="splash-cta"
+            onClick={() => navigate('/connect')}
+          >
+            ✦ Let's begin
+          </button>
+        </motion.div>
 
-      <path d="M110,215 Q70,242 56,258"   stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.70" strokeLinecap="round" />
-      <path d="M110,215 Q88,250 78,265"   stroke="url(#vna-nerve)" strokeWidth="1"   fill="none" opacity="0.55" strokeLinecap="round" />
-      <path d="M110,215 Q110,252 110,268" stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.65" strokeLinecap="round" />
-      <path d="M110,215 Q132,250 142,265" stroke="url(#vna-nerve)" strokeWidth="1"   fill="none" opacity="0.55" strokeLinecap="round" />
-      <path d="M110,215 Q150,242 164,258" stroke="url(#vna-nerve)" strokeWidth="1.1" fill="none" opacity="0.70" strokeLinecap="round" />
-
-      <circle r="2" fill="#6EE7D2" opacity="0.9">
-        <animateMotion dur="7s" repeatCount="indefinite" begin="0s" calcMode="paced">
-          <mpath href="#vna-trunk" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.5" fill="#00C9A7" opacity="0.85">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="1.5s" calcMode="paced">
-          <mpath href="#vna-heart-l" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.5" fill="#4A7FA5" opacity="0.80">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="2.8s" calcMode="paced">
-          <mpath href="#vna-lung-r" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.5" fill="#00C9A7" opacity="0.75">
-        <animateMotion dur="3s" repeatCount="indefinite" begin="1s" calcMode="paced">
-          <mpath href="#vna-gut-l" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.2" fill="#6EE7D2" opacity="0.70">
-        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0s" calcMode="paced">
-          <mpath href="#vna-cranial-l" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.2" fill="#6EE7D2" opacity="0.70">
-        <animateMotion dur="1.2s" repeatCount="indefinite" begin="0.6s" calcMode="paced">
-          <mpath href="#vna-cranial-r" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.5" fill="#00C9A7" opacity="0.75">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="0.8s" calcMode="paced">
-          <mpath href="#vna-heart-r" />
-        </animateMotion>
-      </circle>
-
-      <circle r="1.5" fill="#4A7FA5" opacity="0.75">
-        <animateMotion dur="2.5s" repeatCount="indefinite" begin="3.5s" calcMode="paced">
-          <mpath href="#vna-lung-l" />
-        </animateMotion>
-      </circle>
-
-      <circle cx="52"  cy="70"  r="1"   fill="#E8EDF2" opacity="0.6" />
-      <circle cx="172" cy="58"  r="0.8" fill="#E8EDF2" opacity="0.5" />
-      <circle cx="38"  cy="165" r="0.7" fill="#E8EDF2" opacity="0.4" />
-      <circle cx="186" cy="182" r="1"   fill="#E8EDF2" opacity="0.55" />
-      <circle cx="64"  cy="228" r="0.8" fill="#E8EDF2" opacity="0.45" />
-      <circle cx="158" cy="238" r="0.9" fill="#E8EDF2" opacity="0.5" />
-    </svg>
+        {/* Footer */}
+        <motion.div className="splash-footer" {...fadeUp(2.0)}>
+          🔒 Just your signal.
+        </motion.div>
+      </div>
+    </motion.div>
   )
 }
