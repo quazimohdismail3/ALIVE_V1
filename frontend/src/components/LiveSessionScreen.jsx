@@ -66,6 +66,7 @@ export default function LiveSessionScreen() {
   const toneRef = useRef(null)
   const bleRef = useRef(null)
   const wsRef = useRef(null)
+  const discardRef = useRef(false)
   const startFrameRef = useRef(null)
   const frameRef = useRef(null)
   const prevRrRef = useRef(null)
@@ -123,7 +124,11 @@ export default function LiveSessionScreen() {
         if (!cancelled) {
           setStartFrame(startFrameRef.current)
           setEndFrame(frameRef.current)
-          navigate('/insights')
+          if (discardRef.current) {
+            navigate('/connect')
+          } else {
+            navigate('/insights')
+          }
         }
       }
 
