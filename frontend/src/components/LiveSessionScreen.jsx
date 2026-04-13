@@ -337,6 +337,12 @@ export default function LiveSessionScreen() {
             wsRef.current?.close()
           }}
           onCancel={() => setShowExitModal(false)}
+          onDiscard={() => {
+            setShowExitModal(false)
+            discardRef.current = true
+            wsRef.current?.send(JSON.stringify({ cmd: 'discard' }))
+            wsRef.current?.close()
+          }}
         />
       )}
 
@@ -558,7 +564,7 @@ function HRVTrajectoryStrip({ series }) {
 }
 
 // ─── ExitConfirmModal ─────────────────────────────────────────────────────────
-function ExitConfirmModal({ onConfirm, onCancel }) {
+function ExitConfirmModal({ onConfirm, onCancel, onDiscard }) {
   return (
     <div
       onClick={onCancel}
@@ -594,6 +600,13 @@ function ExitConfirmModal({ onConfirm, onCancel }) {
                    background: 'var(--gradient-purple-blue)', color: '#fff',
                    fontSize: 15, fontWeight: 500, cursor: 'pointer', marginBottom: 10, minHeight: 44 }}>
           End &amp; save
+        </button>
+        <button
+          onClick={onDiscard}
+          style={{ width: '100%', padding: '14px', borderRadius: 12,
+                   border: '1px solid rgba(239,68,68,0.4)', background: 'transparent',
+                   color: '#ef4444', fontSize: 15, cursor: 'pointer', marginBottom: 10, minHeight: 44 }}>
+          Discard session
         </button>
         <button
           onClick={onCancel}
