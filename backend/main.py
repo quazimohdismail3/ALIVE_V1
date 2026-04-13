@@ -152,6 +152,9 @@ async def ws_session(
                             rrs.append(float(msg["rr"]))
                         elif msg.get("cmd") == "stop":
                             raise WebSocketDisconnect()
+                        elif msg.get("cmd") == "discard":
+                            discard_flag = True
+                            raise WebSocketDisconnect()
                 except asyncio.TimeoutError:
                     pass
 
@@ -221,8 +224,8 @@ async def ws_session(
     except WebSocketDisconnect:
         pass
     finally:
-        # Finalize session record
-        if last_state is not None and rmssd_start is not None:
+        # Finalize session record (skipped on discard — snapshots kept, no final metrics)
+        if not discard_flag and last_state is not None and rmssd_start is not None:
             from .insight_engine import SessionSummary, generate_insight
             dominant = max(state_dom_counter, key=state_dom_counter.get) if state_dom_counter else "unknown"
             summary = SessionSummary(
