@@ -112,6 +112,7 @@ async def ws_session(
     last_state = None
     last_ans = None
     fallback_triggered = False
+    discard_flag = False
     state_dom_counter: dict[str, int] = {}
 
     try:
@@ -120,6 +121,16 @@ async def ws_session(
             elapsed = cycle_t0 - t_start
             if elapsed >= duration_s:
                 break
+
+            # --- Check for discard/control messages (non-blocking, both modes)
+            try:
+                raw = await asyncio.wait_for(websocket.receive_text(), timeout=0)
+                msg_ctrl = json.loads(raw)
+                if msg_ctrl.get("cmd") == "discard":
+                    discard_flag = True
+                    raise WebSocketDisconnect()
+            except asyncio.TimeoutError:
+                pass
 
             # --- RR acquisition: ~1s of beats
             rrs: list[float] = []
