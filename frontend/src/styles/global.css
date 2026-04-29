@@ -1,3 +1,5 @@
+@import url('https://fonts.googleapis.com/css2?family=Figtree:wght@300;400;500;600;700&display=swap');
+
 :root {
   /* Backgrounds */
   --bg-void: #000000;
@@ -325,4 +327,103 @@ input, textarea { font-family: inherit; }
 
 @keyframes spin {
   to { transform: rotate(360deg); }
+}
+
+/* ═══════════════════════════════════════════════════════════════════════════
+   V2 DESIGN SYSTEM — appended 2026-04-30
+   ═══════════════════════════════════════════════════════════════════════════ */
+
+/* ── V2 base tokens ─────────────────────────────────────────────────────── */
+:root {
+  --bg:         #0A0A0F;
+  --surface:    #13131A;
+  --surface-2:  #1C1C28;
+  --primary:    #7C6FF7;
+  --locked:     #00D084;
+  --text:       #E8E8F0;
+  --text-dim:   #7A7A96;
+  --warn:       #EF9F27;
+  --danger:     #E24B4A;
+
+  --vs-low:     #E24B4A;
+  --vs-mid:     #EF9F27;
+  --vs-good:    #1D9E75;
+  --vs-peak:    #534AB7;
+
+  --font-head:  'Figtree', system-ui, sans-serif;
+
+  /* animation durations — updated per frame via inline style */
+  --vs-period:  2s;
+  --rf-period:  10s;   /* 6 bpm default = 10s */
+}
+
+/* ── ANS ambient color cascade ──────────────────────────────────────────── */
+:root[data-ans="ventral_vagal"]       { --ambient: #00D084; }
+:root[data-ans="healthy_sympathetic"] { --ambient: #EF9F27; }
+:root[data-ans="anxious_sympathetic"] { --ambient: #E24B4A; }
+:root[data-ans="dorsal_vagal"]        { --ambient: #534AB7; }
+:root[data-ans="burnout_rigidity"]    { --ambient: #7A7A96; }
+:root                                  { --ambient: #7C6FF7; }
+
+/* ── Ambient background ─────────────────────────────────────────────────── */
+.ambient-bg {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background: radial-gradient(ellipse 80% 60% at 50% 20%, color-mix(in srgb, var(--ambient) 12%, transparent), transparent 70%);
+  transition: background 1200ms ease;
+}
+
+/* ── VS orb ─────────────────────────────────────────────────────────────── */
+.vs-orb {
+  border-radius: 50%;
+  animation: vsPulse var(--vs-period, 2s) ease-in-out infinite;
+}
+@keyframes vsPulse {
+  0%, 100% { transform: scale(1);    opacity: 0.9; }
+  50%       { transform: scale(1.06); opacity: 1;   }
+}
+
+/* ── RF breath ring ─────────────────────────────────────────────────────── */
+.breath-ring {
+  border-radius: 50%;
+  animation: breatheRing var(--rf-period, 10s) ease-in-out infinite;
+}
+@keyframes breatheRing {
+  0%   { transform: scale(0.92); opacity: 0.5; }
+  50%  { transform: scale(1.08); opacity: 1;   }
+  100% { transform: scale(0.92); opacity: 0.5; }
+}
+
+/* ── RF lock bloom ──────────────────────────────────────────────────────── */
+@keyframes rfBloom {
+  0%   { box-shadow: 0 0 0 0 color-mix(in srgb, var(--locked) 60%, transparent); }
+  70%  { box-shadow: 0 0 0 16px transparent; }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+.rf-locked { animation: rfBloom 1s ease-out; }
+
+/* ── Fade + slide entrance ──────────────────────────────────────────────── */
+@keyframes fadeSlideUp {
+  from { opacity: 0; transform: translateY(12px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+.fade-slide-up { animation: fadeSlideUp 320ms ease-out both; }
+
+/* ── V2 card ────────────────────────────────────────────────────────────── */
+.v2-card {
+  background: var(--surface);
+  border: 1px solid rgba(255,255,255,0.06);
+  border-radius: 16px;
+  padding: 16px;
+}
+
+/* ── Touch target helper ────────────────────────────────────────────────── */
+.touch-target {
+  min-width: 44px;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }

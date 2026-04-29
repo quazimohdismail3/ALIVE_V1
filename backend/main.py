@@ -157,6 +157,7 @@ async def ws_session(
         await websocket.close(1008)
         return
     user_id = user_claims["sub"]
+    client_tz = auth_msg.get("timezone", "UTC")
     sentry_sdk.set_user({"id": user_id, "email": user_claims.get("email")})
     await websocket.send_json({"type": "auth_ok"})
 
@@ -204,7 +205,7 @@ async def ws_session(
     current_mode = 2  # default Mode 2 (H10); updated from session start message if available
     _rf_config = MODE_CALIBRATION_CONFIG[current_mode]
     session_manager = SessionManager(session_type=session_profile, mode=current_mode)
-    circadian_ctx = get_circadian_context("UTC")  # timezone from client in Phase H
+    circadian_ctx = get_circadian_context(client_tz)
     _settling_start = t_start
     _rr_buffer: list[float] = []  # rolling buffer of accepted RR intervals for RF coherence
     _resp_buffer: list[float] = []  # placeholder; real resp from H10 accel or mic in future modes
@@ -334,7 +335,7 @@ async def ws_session(
 
             # --- Persist snapshot
             if sid and os.environ.get("DATABASE_URL"):
-                ls = latent_extractor.compute(metrics, mode=current_mode)
+                ls = latent_extractor.compute(metrics.to_dict(), {}, {}, circadian_ctx, current_mode)
                 await db.write_snapshot(
                     session_id=sid,
                     user_id=user_id,

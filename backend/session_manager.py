@@ -39,6 +39,11 @@ SESSION_ARCS = {
     ],
 }
 
+# Backend profile name → frontend session name aliases
+SESSION_ARCS["calm"]     = SESSION_ARCS["find_your_calm"]
+SESSION_ARCS["recovery"] = SESSION_ARCS["wind_down"]
+SESSION_ARCS["energy"]   = SESSION_ARCS["morning_emergence"]
+
 
 @dataclass
 class SessionState:

@@ -3,11 +3,12 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
 
 export class WSClient {
-  constructor(session, mode, authToken, onMessage) {
+  constructor(session, mode, authToken, onMessage, { timezone } = {}) {
     this.session = session
     this.mode = mode
     this.authToken = authToken
     this.onMessage = onMessage
+    this.timezone = timezone || 'UTC'
     this.ws = null
     this._reconnectDelay = 1000
     this._closed = false
@@ -20,13 +21,13 @@ export class WSClient {
 
     this.ws.onopen = () => {
       this._reconnectDelay = 1000
-      this.ws.send(JSON.stringify({ type: 'auth', token: this.authToken }))
+      this.ws.send(JSON.stringify({ type: 'auth', token: this.authToken, timezone: this.timezone }))
     }
 
     this.ws.onmessage = (e) => {
       try {
         const msg = JSON.parse(e.data)
-        if (msg.type === 'auth_ok') return  // handshake complete, no-op
+        if (msg.type === 'auth_ok') { this.onMessage(msg); return; }
         this.onMessage(msg)
       } catch (_) {}
     }

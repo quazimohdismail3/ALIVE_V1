@@ -66,6 +66,11 @@ PROFILES: dict[str, list[Phase]] = {
     ],
 }
 
+# Frontend session name → backend profile aliases
+PROFILES["find_your_calm"] = PROFILES["calm"]
+PROFILES["wind_down"]      = PROFILES["recovery"]
+PROFILES["morning_emergence"] = PROFILES["energy"]
+
 
 class HRVSimulator:
     """Generates RR intervals for a chosen session profile."""

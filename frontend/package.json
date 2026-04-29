@@ -9,7 +9,7 @@
     "preview": "vite preview"
   },
   "dependencies": {
-    "@sentry/react": "^10.50.0",
+    "@sentry/react": "^10.51.0",
     "@supabase/supabase-js": "^2.105.1",
     "chart.js": "^4.4.1",
     "framer-motion": "^12.38.0",

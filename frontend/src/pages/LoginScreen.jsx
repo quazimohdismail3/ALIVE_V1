@@ -31,12 +31,13 @@ export default function LoginScreen() {
     <div style={{
       display: 'flex', flexDirection: 'column', alignItems: 'center',
       justifyContent: 'center', minHeight: '100dvh',
-      background: '#0a0a0f', color: '#fff', fontFamily: 'sans-serif',
-      padding: '2rem',
+      background: 'var(--bg)', color: 'var(--text)',
+      fontFamily: 'var(--font-head, sans-serif)', padding: '2rem',
     }}>
-      <h1 style={{ fontSize: '1.5rem', marginBottom: '2rem', letterSpacing: '0.1em' }}>
-        MISSION ALIVE
-      </h1>
+      <div style={{ marginBottom: '2.5rem', textAlign: 'center' }}>
+        <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 28, letterSpacing: '-0.03em' }}>ALIVE</div>
+        <div style={{ color: 'var(--text-dim)', fontSize: 13, marginTop: 4 }}>Autonomic regulation</div>
+      </div>
 
       <form onSubmit={handleLogin} style={{ display: 'flex', flexDirection: 'column', gap: '1rem', width: '100%', maxWidth: '320px' }}>
         <input
@@ -69,18 +70,19 @@ export default function LoginScreen() {
 }
 
 const inputStyle = {
-  background: '#1a1a2e', border: '1px solid #333', borderRadius: '8px',
-  color: '#fff', fontSize: '1rem', padding: '0.75rem 1rem',
+  background: 'var(--surface)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '10px',
+  color: 'var(--text)', fontSize: '1rem', padding: '0.85rem 1rem',
   outline: 'none', width: '100%', boxSizing: 'border-box',
+  minHeight: '44px',
 }
 
 const buttonStyle = {
-  background: '#6c63ff', border: 'none', borderRadius: '8px',
-  color: '#fff', cursor: 'pointer', fontSize: '1rem',
-  padding: '0.75rem', width: '100%',
+  background: 'var(--primary)', border: 'none', borderRadius: '10px',
+  color: '#fff', cursor: 'pointer', fontSize: '1rem', fontWeight: 700,
+  padding: '0.85rem', width: '100%', minHeight: '44px',
 }
 
 const linkStyle = {
-  background: 'none', border: 'none', color: '#888',
+  background: 'none', border: 'none', color: 'var(--text-dim)',
   cursor: 'pointer', fontSize: '0.85rem', textDecoration: 'underline',
 }
