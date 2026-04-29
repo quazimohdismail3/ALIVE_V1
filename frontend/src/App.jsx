@@ -1,42 +1,53 @@
-import React from 'react'
-import { BrowserRouter, Routes, Route, useLocation } from 'react-router-dom'
-import { AnimatePresence } from 'framer-motion'
-import { AppProvider, useApp } from './context/AppContext.jsx'
+import { useState } from 'react'
 import './styles/global.css'
+import { AuthProvider, useAuth } from './context/AuthContext.jsx'
+import LoginScreen from './pages/LoginScreen.jsx'
+import Landing from './pages/Landing.jsx'
+import Session from './pages/Session.jsx'
+import Report from './pages/Report.jsx'
 
-import SplashScreen from './components/SplashScreen.jsx'
-import ConnectScreen from './components/ConnectScreen.jsx'
-import CalibrationScreen from './components/CalibrationScreen.jsx'
-import DashboardScreen from './components/DashboardScreen.jsx'
-import LiveSessionScreen from './components/LiveSessionScreen.jsx'
-import InsightsScreen from './components/InsightsScreen.jsx'
+function AppRoutes() {
+  const { user, loading } = useAuth()
+  const [screen, setScreen] = useState('landing')
+  const [cfg, setCfg] = useState(null)
+  const [reportData, setReportData] = useState(null)
 
-function AnimatedRoutes() {
-  const location = useLocation()
-  const { ansState } = useApp()
+  if (loading) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0a0a0f' }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #6c63ff', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
 
-  return (
-    <div className="app" data-state={ansState}>
-      <AnimatePresence mode="wait">
-        <Routes location={location} key={location.pathname}>
-          <Route path="/"          element={<SplashScreen />} />
-          <Route path="/connect"   element={<ConnectScreen />} />
-          <Route path="/calibrate" element={<CalibrationScreen />} />
-          <Route path="/dashboard" element={<DashboardScreen />} />
-          <Route path="/session"   element={<LiveSessionScreen />} />
-          <Route path="/insights"  element={<InsightsScreen />} />
-        </Routes>
-      </AnimatePresence>
-    </div>
-  )
+  if (!user) return <LoginScreen />
+
+  if (screen === 'session' && cfg) {
+    return (
+      <Session
+        {...cfg}
+        onEnd={(data) => {
+          setReportData(data || null)
+          setScreen('report')
+        }}
+      />
+    )
+  }
+  if (screen === 'report') {
+    return (
+      <Report
+        sessionData={reportData}
+        onDone={() => { setReportData(null); setScreen('landing') }}
+      />
+    )
+  }
+  return <Landing onStart={(c) => { setCfg(c); setScreen('session') }} />
 }
 
 export default function App() {
   return (
-    <BrowserRouter>
-      <AppProvider>
-        <AnimatedRoutes />
-      </AppProvider>
-    </BrowserRouter>
+    <AuthProvider>
+      <AppRoutes />
+    </AuthProvider>
   )
 }

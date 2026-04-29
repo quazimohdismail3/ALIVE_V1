@@ -322,3 +322,7 @@ input, textarea { font-family: inherit; }
 [data-state="anxious_sympathetic"] { --state: var(--sympathetic-a); }
 [data-state="dorsal_vagal"]        { --state: var(--dorsal); }
 [data-state="burnout_rigidity"]    { --state: var(--burnout); }
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
