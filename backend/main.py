@@ -30,6 +30,8 @@ from .safety import SAFE_FALLBACK_PARAMS, SafetySupervisor
 from .state_dynamics import StateDynamics
 from .state_estimation import StateEstimator
 from .trajectory_planner import Trajectory
+from .session_manager import SessionManager
+from .context.circadian import get_circadian_context, session_circadian_fit
 
 
 app = FastAPI(title="Mission Alive API", version="1.0.0")
@@ -135,6 +137,8 @@ async def ws_session(
     rf_coherence = 0.0
     current_mode = 2  # default Mode 2 (H10); updated from session start message if available
     _rf_config = MODE_CALIBRATION_CONFIG[current_mode]
+    session_manager = SessionManager(session_type=session, mode=current_mode)
+    circadian_ctx = get_circadian_context("UTC")  # timezone from client in Phase H
     _settling_start = t_start
     _rr_buffer: list[float] = []  # rolling buffer of accepted RR intervals for RF coherence
     _resp_buffer: list[float] = []  # placeholder; real resp from H10 accel or mic in future modes
@@ -239,6 +243,7 @@ async def ws_session(
                 "sd2_sd1_ratio": _sd2_sd1_norm,
             }
             vs_result = compute_vs_adaptive(vs_components, mode=current_mode, confidences={})
+            current_phase = session_manager.update(vs_result.get("vs", 0), _hrv_d)
 
             # --- Safety
             safety_status = safety.check(metrics, state)
@@ -279,6 +284,8 @@ async def ws_session(
                 "rf_locked": rf_locked,
                 "rf_bpm": rf_bpm,
                 "rf_coherence": rf_coherence,
+                "session_phase": current_phase,
+                "session_type": session_manager.state.session_type,
             })
 
     except WebSocketDisconnect:
