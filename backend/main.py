@@ -9,10 +9,13 @@ import json
 import time
 from typing import Optional
 
+import numpy as np
+
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
 from . import storage, whoop_api
+from .rf_calibration import BayesianRFOptimizer, compute_coherence_at_frequency, MODE_CALIBRATION_CONFIG
 from .affect_classifier import classify as classify_affect
 from .ans_classifier import classify as classify_ans
 from .artifact_filter import ArtifactFilter
@@ -120,6 +123,17 @@ async def ws_session(
     discard_flag = False
     state_dom_counter: dict[str, int] = {}
 
+    # RF calibration state — per-session, reset on each WebSocket connection
+    rf_optimizer = BayesianRFOptimizer()  # default prior; no height/prior_rf without user profile
+    rf_locked = False
+    rf_bpm = rf_optimizer.f0
+    rf_coherence = 0.0
+    current_mode = 2  # default Mode 2 (H10); updated from session start message if available
+    _rf_config = MODE_CALIBRATION_CONFIG[current_mode]
+    _settling_start = t_start
+    _rr_buffer: list[float] = []  # rolling buffer of accepted RR intervals for RF coherence
+    _resp_buffer: list[float] = []  # placeholder; real resp from H10 accel or mic in future modes
+
     try:
         while True:
             cycle_t0 = time.time()
@@ -168,6 +182,7 @@ async def ws_session(
                 r = flt.push(rr)
                 if r.accepted is not None:
                     proc.push(r.accepted)
+                    _rr_buffer.append(r.accepted)
 
             metrics = proc.compute()
             if metrics is None:
@@ -181,6 +196,19 @@ async def ws_session(
                 traj = Trajectory(session=session, duration_s=duration_s, start=state)
 
             target = traj.target_at(elapsed) if traj else state
+
+            # --- RF calibration — runs during settling phase, stops once locked
+            if not rf_locked:
+                elapsed_since_settle = time.time() - _settling_start
+                if elapsed_since_settle > _rf_config["settling_seconds"] and len(_rr_buffer) >= 15:
+                    _resp_arr = np.array(_resp_buffer[-100:]) if _resp_buffer else np.zeros(50)
+                    rf_coherence = compute_coherence_at_frequency(_rr_buffer[-60:], _resp_arr, rf_bpm)
+                    rf_optimizer.observe(rf_bpm, rf_coherence)
+                    if rf_coherence >= _rf_config["min_coherence_lock"]:
+                        rf_locked = True
+                        rf_bpm, _ = rf_optimizer.best_estimate()
+                    else:
+                        rf_bpm = rf_optimizer.next_evaluation_point()
 
             # --- Parallel classifiers
             ans = classify_ans(metrics, state.rmssd_norm)
@@ -224,6 +252,9 @@ async def ws_session(
                 "strategy": strategy,
                 "mpc_score": score,
                 "safety": {"safe": safety_status.safe, "reason": safety_status.reason},
+                "rf_locked": rf_locked,
+                "rf_bpm": rf_bpm,
+                "rf_coherence": rf_coherence,
             })
 
     except WebSocketDisconnect:
