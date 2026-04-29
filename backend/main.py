@@ -18,6 +18,9 @@ from . import storage, whoop_api
 from .rf_calibration import BayesianRFOptimizer, compute_coherence_at_frequency, MODE_CALIBRATION_CONFIG
 from .affect_classifier import classify as classify_affect
 from .ans_classifier import classify as classify_ans
+from .vs_score import compute_vs_adaptive
+from .state_classifier import StateClassifier
+from .latent_state import LatentStateExtractor
 from .artifact_filter import ArtifactFilter
 from .config import CONTROL_HZ
 from .hrv_processor import HRVProcessor
@@ -112,6 +115,8 @@ async def ws_session(
     est = StateEstimator()
     dyn = StateDynamics()
     safety = SafetySupervisor()
+    state_classifier = StateClassifier()
+    latent_extractor = LatentStateExtractor()
 
     traj: Trajectory | None = None
     prev_params: dict | None = None
@@ -217,6 +222,24 @@ async def ws_session(
             last_ans = ans
             last_state = state
 
+            # --- VS score (mode-adaptive; unavailable components get weight redistributed)
+            # lf_coherence_at_rf, rsa_amplitude_norm, rmssd_velocity_norm filled Phase C/E
+            # sd2_sd1_norm derived from existing Poincaré metrics
+            _hrv_d = metrics.to_dict()
+            _sd2 = _hrv_d.get("sd2", 0.0) or 0.0
+            _sd1 = _hrv_d.get("sd1", 1.0) or 1.0
+            _sd2_sd1_norm = min(1.0, (_sd2 / max(_sd1, 0.01)) / 3.0)  # normalize: ratio ~0–3 → 0–1
+            vs_components = {
+                "lf_coherence": _hrv_d.get("lf_coherence_at_rf"),      # filled Phase C
+                "rsa_amplitude": _hrv_d.get("rsa_amplitude_norm"),      # filled Phase E
+                "rmssd_trajectory": _hrv_d.get("rmssd_velocity_norm"),  # filled Phase E
+                "dfa_alpha1": min(1.0, max(0.0, (_hrv_d.get("dfa_alpha1", 0.0) or 0.0) / 2.0)),
+                "breath_rsa_lock": None,  # filled Phase E
+                "posture_openness": None,  # filled Phase E
+                "sd2_sd1_ratio": _sd2_sd1_norm,
+            }
+            vs_result = compute_vs_adaptive(vs_components, mode=current_mode, confidences={})
+
             # --- Safety
             safety_status = safety.check(metrics, state)
             if safety_status.fallback_active:
@@ -248,6 +271,7 @@ async def ws_session(
                 "state": state.to_dict(),
                 "ans": {"state": ans.state, "confidence": ans.confidence, "actionable": ans.actionable},
                 "affect": {"arousal": affect.arousal, "valence": affect.valence, "quadrant": affect.quadrant},
+                "vs": vs_result,
                 "music_params": best_params,
                 "strategy": strategy,
                 "mpc_score": score,
