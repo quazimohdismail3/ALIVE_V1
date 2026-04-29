@@ -1,6 +1,7 @@
 // frontend/src/pages/Session.jsx
 import { useEffect, useRef, useState } from 'react';
 import { WSClient } from '../utils/ws_client.js';
+import { supabase } from '../lib/supabase.js';
 import VsDisplay from '../ui/VsDisplay.jsx';
 import BreathRing from '../ui/BreathRing.jsx';
 import CoherenceBar from '../ui/CoherenceBar.jsx';
@@ -47,39 +48,52 @@ export default function Session({ mode, token, session, onEnd }) {
     const peakVsRef = useRef(0);
 
     useEffect(() => {
-        const sessionId = `${token}-${Date.now()}`;
-        const ws = new WSClient(sessionId, mode, (msg) => {
-            if (msg.type === 'state_update') {
-                setData(msg);
-                const vsVal = typeof msg.vs === 'object' ? (msg.vs?.vs ?? 0) : (msg.vs ?? 0);
-                if (vsVal > peakVsRef.current) peakVsRef.current = vsVal;
+        let ws = null;
+
+        async function startSession() {
+            let accessToken = null;
+            if (supabase) {
+                const { data: { session: supaSession } } = await supabase.auth.getSession();
+                accessToken = supaSession?.access_token ?? null;
             }
-        });
-        ws.connect();
-        wsRef.current = ws;
+            // fall back to prop token for dev/simulator without Supabase
+            const authToken = accessToken ?? token ?? 'dev';
 
-        const fusion = new SensorFusion(mode);
-        fusionRef.current = fusion;
-
-        fusion.start().then(() => {
-            sendIntervalRef.current = setInterval(() => {
-                const reading = fusion.getReading();
-                if (reading?.rr?.rr_ms?.length > 0) {
-                    const latest = reading.rr.rr_ms.slice(-5);
-                    latest.forEach(rr => ws.send({
-                        type: 'rr_interval', rr_ms: rr,
-                        timestamp: Date.now() / 1000, source: reading.rr.source
-                    }));
+            const sessionId = `${token}-${Date.now()}`;
+            ws = new WSClient(sessionId, mode, authToken, (msg) => {
+                if (msg.type === 'state_update') {
+                    setData(msg);
+                    const vsVal = typeof msg.vs === 'object' ? (msg.vs?.vs ?? 0) : (msg.vs ?? 0);
+                    if (vsVal > peakVsRef.current) peakVsRef.current = vsVal;
                 }
-                if (reading?.face) ws.send({ type: 'sensor_update', sensor: 'facemesh', data: reading.face });
-                if (reading?.pose) ws.send({ type: 'sensor_update', sensor: 'pose', data: reading.pose });
-                if (reading?.breath) ws.send({ type: 'sensor_update', sensor: 'breath', data: reading.breath });
-            }, 500);
-        });
+            });
+            ws.connect();
+            wsRef.current = ws;
 
+            const fusion = new SensorFusion(mode);
+            fusionRef.current = fusion;
+
+            fusion.start().then(() => {
+                sendIntervalRef.current = setInterval(() => {
+                    const reading = fusion.getReading();
+                    if (reading?.rr?.rr_ms?.length > 0) {
+                        const latest = reading.rr.rr_ms.slice(-5);
+                        latest.forEach(rr => ws.send({
+                            type: 'rr_interval', rr_ms: rr,
+                            timestamp: Date.now() / 1000, source: reading.rr.source
+                        }));
+                    }
+                    if (reading?.face) ws.send({ type: 'sensor_update', sensor: 'facemesh', data: reading.face });
+                    if (reading?.pose) ws.send({ type: 'sensor_update', sensor: 'pose', data: reading.pose });
+                    if (reading?.breath) ws.send({ type: 'sensor_update', sensor: 'breath', data: reading.breath });
+                }, 500);
+            });
+        }
+
+        startSession();
         return () => {
-            ws.close();
-            fusion.stop();
+            wsRef.current?.close();
+            fusionRef.current?.stop();
             if (sendIntervalRef.current) clearInterval(sendIntervalRef.current);
         };
     }, []);
