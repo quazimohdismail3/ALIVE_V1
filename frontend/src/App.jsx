@@ -4,11 +4,12 @@ import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import Landing from './pages/Landing.jsx'
 import Setup from './pages/Setup.jsx'
+import Calibration from './pages/Calibration.jsx'
 import Session from './pages/Session.jsx'
 import Insight from './pages/Insight.jsx'
 
 /**
- * Screens: login → landing → setup → session → insight
+ * Screens: login → landing → setup → calibration → session → insight
  * Discard path: session → landing (bypasses insight)
  */
 function AppRoutes() {
@@ -32,8 +33,23 @@ function AppRoutes() {
       return (
         <Setup
           cfg={cfg}
-          onReady={(readyCfg) => { setCfg(readyCfg); setScreen('session') }}
+          onReady={(readyCfg) => { setCfg(readyCfg); setScreen('calibration') }}
           onBack={() => setScreen('landing')}
+        />
+      )
+
+    case 'calibration':
+      return (
+        <Calibration
+          cfg={cfg}
+          onLocked={(rfBpm, locked) => {
+            setCfg({ ...cfg, rfBpm, rfLocked: !!locked })
+            setScreen('session')
+          }}
+          onSkip={() => {
+            setCfg({ ...cfg, rfBpm: 5.5, rfLocked: false })
+            setScreen('session')
+          }}
         />
       )
 

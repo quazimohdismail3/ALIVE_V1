@@ -17,24 +17,34 @@ export class SensorFusion {
     async start() {
         this.motionGate.start();
         try {
+            // BLE H10 — modes 2 and 3
             if (this.mode === 2 || this.mode === 3) {
                 this.sensors.h10 = new BleH10Sensor();
                 await this.sensors.h10.start();
             }
+            // Rear-cam fingertip rPPG — mode 1 only (rear cam + torch can't coexist with front cam)
             if (this.mode === 1) {
                 this.sensors.rppg = new ContactRPPGSensor();
                 await this.sensors.rppg.start();
             }
-            if (this.mode !== 2) {
-                this.sensors.facemesh = new FaceMeshSensor();
-                await this.sensors.facemesh.start();
-                this.sensors.pose = new BlazePoseSensor();
-                await this.sensors.pose.start();
-                this.sensors.mic = new BreathMicSensor();
-                await this.sensors.mic.start();
+            // Mic — all modes (resp signal for RF coherence)
+            this.sensors.mic = new BreathMicSensor();
+            await this.sensors.mic.start();
+            // Front-cam stack — combined mode only (single shared stream for face + pose)
+            if (this.mode === 3) {
+                try {
+                    this._frontStream = await navigator.mediaDevices.getUserMedia({
+                        video: { facingMode: 'user', width: 320, height: 240 }
+                    });
+                    this.sensors.facemesh = new FaceMeshSensor();
+                    await this.sensors.facemesh.start(this._frontStream);
+                    this.sensors.pose = new BlazePoseSensor();
+                    await this.sensors.pose.start(this._frontStream);
+                } catch (e) {
+                    console.warn('Front-cam stack failed (non-fatal):', e);
+                }
             }
         } catch (err) {
-            // All sensor failures are silent — never crash the session
             console.warn('SensorFusion start error (non-fatal):', err);
         }
     }
@@ -42,15 +52,22 @@ export class SensorFusion {
     stop() {
         Object.values(this.sensors).forEach(s => { try { s.stop(); } catch(_) {} });
         try { this.motionGate.stop(); } catch(_) {}
+        // Stop the shared front-camera stream we created in combined mode
+        try { if (this._frontStream) this._frontStream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        this._frontStream = null;
     }
 
     getReading() {
         const gated = this.motionGate.shouldGate();
+        const breath = this.sensors.mic?.getLatestReading() || null;
+        const resp_amp = this.sensors.mic?.getRespAmplitudeSample?.() ?? 0;
         return {
             rr: this.sensors.h10?.getLatestRR() || this.sensors.rppg?.getLatestRR() || null,
             face: gated ? null : (this.sensors.facemesh?.getLatestReading() || null),
             pose: gated ? null : (this.sensors.pose?.getLatestReading() || null),
-            breath: this.sensors.mic?.getLatestReading() || null,
+            breath,
+            resp_bpm: breath?.breath_rate_bpm ?? null,
+            resp_amp,
             mode: this.mode,
         };
     }

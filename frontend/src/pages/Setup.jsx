@@ -125,8 +125,9 @@ export default function Setup({ cfg, onReady, onBack }) {
               {needsCamera && (
                 <PermRow label="Camera" ok={!!streamRef.current} note="Rear camera for rPPG" />
               )}
-              {cfg?.sensorMode !== 2 && (
-                <PermRow label="Microphone" ok={false} note="Breath detection" />
+              <PermRow label="Microphone" ok={false} note="Breath / RF coherence" />
+              {cfg?.sensorMode === 3 && (
+                <PermRow label="Front Camera" ok={false} note="Face + posture (combined mode)" />
               )}
             </div>
 
@@ -196,7 +197,7 @@ export default function Setup({ cfg, onReady, onBack }) {
                 transition: 'opacity 200ms',
               }}
             >
-              Begin Session
+              Begin Calibration
             </button>
           </>
         )}

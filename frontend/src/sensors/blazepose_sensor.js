@@ -7,7 +7,7 @@ export class BlazePoseSensor {
         this.stream = null;
     }
 
-    async start() {
+    async start(sharedStream = null) {
         try {
             const { Pose } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/pose/pose.js');
             this.pose = new Pose({ locateFile: f =>
@@ -17,9 +17,15 @@ export class BlazePoseSensor {
                 minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
             });
             this.pose.onResults(r => this._onResults(r));
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: 320, height: 240 }
-            });
+            if (sharedStream) {
+                this._ownsStream = false;
+                this.stream = sharedStream;
+            } else {
+                this._ownsStream = true;
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: 320, height: 240 }
+                });
+            }
             const video = document.createElement('video');
             video.srcObject = this.stream;
             video.setAttribute('playsinline', true);
@@ -39,7 +45,7 @@ export class BlazePoseSensor {
 
     stop() {
         this.running = false;
-        try { if (this.stream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        try { if (this._ownsStream && this.stream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
     }
 
     _onResults(results) {

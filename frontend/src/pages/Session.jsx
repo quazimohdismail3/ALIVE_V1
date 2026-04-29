@@ -44,7 +44,7 @@ async function postSessionEnd(summary) {
 }
 
 export default function Session({ cfg, onEnd, onDiscard }) {
-  const { session, sensorMode, backendMode, timezone } = cfg ?? {};
+  const { session, sensorMode, backendMode, timezone, rfBpm } = cfg ?? {};
   const { acquire, release } = useWakeLock();
   const { push: accumPush, summarize, reset: accumReset } = useSessionAccum();
 
@@ -101,6 +101,13 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       // B2 fix: pass cfg.session (not token+timestamp) as first arg
       const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone });
       ws.connect();
+      // Tell backend this is a session WS (not calibration), avoids 2s peek timeout
+      const flushSentinel = setInterval(() => {
+        if (ws.ws?.readyState === WebSocket.OPEN) {
+          ws.send({ type: 'session_start' });
+          clearInterval(flushSentinel);
+        }
+      }, 50);
       wsRef.current = ws;
 
       // Reuse fusion from Setup (already has sensors started + BLE paired).
@@ -124,13 +131,16 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         if (e >= SESSION_DURATION_S) endSession(false);
       }, 1000);
 
-      // RR send loop — only sends real sensor RR data
+      // RR + resp_amp send loop
       sendIvRef.current = setInterval(() => {
         const reading = fusion.getReading();
-        if (!reading?.rr) return;
-        const rrs = Array.isArray(reading.rr.rr_ms) ? reading.rr.rr_ms.slice(-5) : [];
-        // B1 fix: send {rr: value} — backend reads msg["rr"]
-        rrs.forEach(rr => ws.send({ rr }));
+        if (!reading) return;
+        const rrs = Array.isArray(reading.rr?.rr_ms) ? reading.rr.rr_ms.slice(-5) : [];
+        rrs.forEach(rr => ws.send({ rr, resp_amp: reading.resp_amp ?? 0 }));
+        // Also send a respiration-only frame if no RR available, so backend coherence has data
+        if (rrs.length === 0 && (reading.resp_amp ?? 0) > 0) {
+          ws.send({ resp_amp: reading.resp_amp });
+        }
       }, 500);
     }
 
@@ -146,8 +156,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   function handleWsMessage(msg) {
     if (msg.type === 'auth_ok') {
       setWsStatus('live');
-      // B5 fix: start audio after auth confirmed, with RF bpm
-      audioRef.current?.start(msg.rf_bpm ?? 6).catch(() => {});
+      // Start audio with locked RF from calibration (fallback to msg.rf_bpm or 6)
+      audioRef.current?.start(rfBpm ?? msg.rf_bpm ?? 6).catch(() => {});
       return;
     }
     if (msg.status) {

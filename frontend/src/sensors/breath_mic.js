@@ -1,10 +1,13 @@
 // frontend/src/sensors/breath_mic.js
 // WebAudio FFT → dominant 0.1–0.5Hz band → breath rate (6–30 bpm)
+// Also exposes raw band-amplitude samples for backend RF coherence.
 export class BreathMicSensor {
     constructor() {
         this.latest = null;
         this.running = false;
         this._intervalId = null;
+        this._sampleId = null;
+        this._respAmpBuffer = [];   // recent band-power samples (~4 Hz)
     }
 
     async start() {
@@ -17,6 +20,7 @@ export class BreathMicSensor {
             src.connect(this.analyser);
             this.running = true;
             this._intervalId = setInterval(() => this._update(), 5000);
+            this._sampleId = setInterval(() => this._sampleBandAmp(), 250); // ~4 Hz
             this._update();
         } catch (err) {
             console.warn('BreathMic start failed (non-fatal):', err);
@@ -26,6 +30,36 @@ export class BreathMicSensor {
     stop() {
         this.running = false;
         if (this._intervalId) clearInterval(this._intervalId);
+        if (this._sampleId) clearInterval(this._sampleId);
+    }
+
+    _sampleBandAmp() {
+        if (!this.running || !this.analyser) return;
+        const buf = new Float32Array(this.analyser.frequencyBinCount);
+        this.analyser.getFloatFrequencyData(buf);
+        const sr = this.analyser.context.sampleRate;
+        const binHz = sr / this.analyser.fftSize;
+        const loIdx = Math.max(0, Math.floor(0.1 / binHz));
+        const hiIdx = Math.min(buf.length - 1, Math.ceil(0.5 / binHz));
+        let sumLin = 0;
+        let n = 0;
+        for (let i = loIdx; i <= hiIdx; i++) {
+            // dB → linear power
+            sumLin += Math.pow(10, buf[i] / 10);
+            n++;
+        }
+        const meanLin = n > 0 ? sumLin / n : 0;
+        // Use sqrt(power) → amplitude. Stable, non-negative.
+        const amp = Math.sqrt(Math.max(0, meanLin));
+        this._respAmpBuffer.push(amp);
+        if (this._respAmpBuffer.length > 240) this._respAmpBuffer.shift();
+    }
+
+    /** Returns the most recent respiration band amplitude sample, or 0 if none. */
+    getRespAmplitudeSample() {
+        return this._respAmpBuffer.length > 0
+            ? this._respAmpBuffer[this._respAmpBuffer.length - 1]
+            : 0;
     }
 
     _update() {

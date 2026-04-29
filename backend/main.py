@@ -161,6 +161,22 @@ async def ws_session(
     sentry_sdk.set_user({"id": user_id, "email": user_claims.get("email")})
     await websocket.send_json({"type": "auth_ok"})
 
+    # --- Detect calibration vs session intent: peek next message
+    # Frontend sends {type:"cal_start"} for calibration WS, {type:"session_start"}
+    # for session WS. Falls through after 2s if neither arrives.
+    cal_active = False
+    pending_first_msg: dict | None = None
+    try:
+        first = await asyncio.wait_for(websocket.receive_json(), timeout=2.0)
+        if first.get("type") == "cal_start":
+            cal_active = True
+        elif first.get("type") == "session_start":
+            cal_active = False  # explicit; no pending msg to drain
+        else:
+            pending_first_msg = first
+    except asyncio.TimeoutError:
+        pass
+
     # Map mode int → simulator string for HRVSimulator (1=simulator, 2/3=real sensor)
     mode_str = "simulator" if mode == 1 else "polar"
     session_profile = session if session in PROFILES else "calm"
@@ -208,8 +224,105 @@ async def ws_session(
     circadian_ctx = get_circadian_context(client_tz)
     _settling_start = t_start
     _rr_buffer: list[float] = []  # rolling buffer of accepted RR intervals for RF coherence
-    _resp_buffer: list[float] = []  # placeholder; real resp from H10 accel or mic in future modes
+    _resp_buffer: list[float] = []  # respiration amplitude samples from frontend (mic / accel)
 
+    # ============================================================
+    # CALIBRATION PHASE (if cal_active): adaptive RF sweep
+    # ============================================================
+    if cal_active:
+        CAL_DWELL_S = 30.0    # dwell at each candidate frequency
+        CAL_CAP_S = 120.0     # absolute timeout
+        cal_start_t = time.time()
+        target_bpm = rf_optimizer.f0
+        dwell_start = cal_start_t
+        coherence_so_far = 0.0
+        try:
+            while True:
+                now = time.time()
+                if now - cal_start_t >= CAL_CAP_S:
+                    break
+
+                # Drain incoming WS messages for ~1s to gather RR + resp_amp
+                drain_until = now + 1.0
+                while time.time() < drain_until:
+                    try:
+                        raw = await asyncio.wait_for(
+                            websocket.receive_text(), timeout=0.05
+                        )
+                        msg = json.loads(raw)
+                        if "rr" in msg:
+                            rr_val = float(msg["rr"])
+                            r = flt.push(rr_val)
+                            if r.accepted is not None:
+                                proc.push(r.accepted)
+                                _rr_buffer.append(r.accepted)
+                        if "resp_amp" in msg:
+                            try:
+                                _resp_buffer.append(float(msg["resp_amp"]))
+                                if len(_resp_buffer) > 500:
+                                    _resp_buffer[:-500] = []
+                            except (TypeError, ValueError):
+                                pass
+                        if msg.get("cmd") == "discard":
+                            discard_flag = True
+                            raise WebSocketDisconnect()
+                    except asyncio.TimeoutError:
+                        break
+
+                # End of dwell → observe and pick next target
+                dwell_elapsed = time.time() - dwell_start
+                if dwell_elapsed >= CAL_DWELL_S and len(_rr_buffer) >= 15:
+                    _resp_arr = (
+                        np.array(_resp_buffer[-200:]) if _resp_buffer else np.zeros(50)
+                    )
+                    coherence_so_far = compute_coherence_at_frequency(
+                        _rr_buffer[-60:], _resp_arr, target_bpm
+                    )
+                    rf_optimizer.observe(target_bpm, coherence_so_far)
+                    if coherence_so_far >= _rf_config["min_coherence_lock"]:
+                        rf_locked = True
+                        rf_bpm, rf_coherence = rf_optimizer.best_estimate()
+                        break
+                    target_bpm = rf_optimizer.next_evaluation_point()
+                    dwell_start = time.time()
+
+                # Emit cal frame ~1Hz
+                await websocket.send_json({
+                    "cal": True,
+                    "target_bpm": round(float(target_bpm), 2),
+                    "dwell_remaining": max(0.0, CAL_DWELL_S - dwell_elapsed),
+                    "coherence_so_far": round(float(coherence_so_far), 3),
+                    "n_rr": len(_rr_buffer),
+                    "elapsed": round(now - cal_start_t, 1),
+                })
+        except WebSocketDisconnect:
+            pass
+
+        # If timed out without lock, use best-so-far estimate
+        if not rf_locked:
+            best_bpm, best_coh = rf_optimizer.best_estimate()
+            rf_bpm = best_bpm
+            rf_coherence = best_coh
+
+        try:
+            await websocket.send_json({
+                "cal_done": True,
+                "rf_bpm": round(float(rf_bpm), 2),
+                "rf_locked": bool(rf_locked),
+                "rf_coherence": round(float(rf_coherence), 3),
+            })
+        except Exception:
+            pass
+
+        try:
+            await websocket.close()
+        except Exception:
+            pass
+        return
+
+    # ============================================================
+    # SESSION PHASE — normal closed-loop control
+    # ============================================================
     try:
         while True:
             cycle_t0 = time.time()
@@ -236,7 +349,18 @@ async def ws_session(
                     rrs.append(rr)
                     await asyncio.sleep(rr / 1000.0)
             else:
-                # Real-sensor mode: receive RRs with a 1s timeout
+                # Real-sensor mode: receive RRs + resp_amp with a 1s timeout
+                # Drain pending first message captured during cal-detect phase
+                if pending_first_msg is not None:
+                    _m = pending_first_msg
+                    pending_first_msg = None
+                    if "rr" in _m:
+                        rrs.append(float(_m["rr"]))
+                    if "resp_amp" in _m:
+                        try:
+                            _resp_buffer.append(float(_m["resp_amp"]))
+                        except (TypeError, ValueError):
+                            pass
                 try:
                     while True:
                         raw = await asyncio.wait_for(
@@ -245,9 +369,16 @@ async def ws_session(
                         msg = json.loads(raw)
                         if "rr" in msg:
                             rrs.append(float(msg["rr"]))
-                        elif msg.get("cmd") == "stop":
+                        if "resp_amp" in msg:
+                            try:
+                                _resp_buffer.append(float(msg["resp_amp"]))
+                                if len(_resp_buffer) > 500:
+                                    _resp_buffer[:-500] = []
+                            except (TypeError, ValueError):
+                                pass
+                        if msg.get("cmd") == "stop":
                             raise WebSocketDisconnect()
-                        elif msg.get("cmd") == "discard":
+                        if msg.get("cmd") == "discard":
                             discard_flag = True
                             raise WebSocketDisconnect()
                 except asyncio.TimeoutError:
@@ -358,7 +489,7 @@ async def ws_session(
                         "poincare_sd2": getattr(metrics, "poincare_sd2", None),
                         "vs_score": vs_result.get("vs"),
                         "ans_state": last_ans,
-                        "arc_phase": session_manager.current_phase,
+                        "arc_phase": current_phase,
                         "rf_coherence": rf_coherence,
                         "rf_locked": rf_locked,
                         "ls_arousal": ls.arousal,

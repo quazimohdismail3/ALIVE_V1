@@ -7,7 +7,7 @@ export class FaceMeshSensor {
         this.stream = null;
     }
 
-    async start() {
+    async start(sharedStream = null) {
         try {
             const { FaceMesh } = await import('https://cdn.jsdelivr.net/npm/@mediapipe/face_mesh/face_mesh.js');
             this.faceMesh = new FaceMesh({ locateFile: f =>
@@ -17,9 +17,16 @@ export class FaceMeshSensor {
                 minDetectionConfidence: 0.5, minTrackingConfidence: 0.5
             });
             this.faceMesh.onResults(r => this._onResults(r));
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: 'user', width: 320, height: 240 }
-            });
+            // Use shared stream if provided (combined mode) — never duplicate getUserMedia
+            if (sharedStream) {
+                this._ownsStream = false;
+                this.stream = sharedStream;
+            } else {
+                this._ownsStream = true;
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: 'user', width: 320, height: 240 }
+                });
+            }
             const video = document.createElement('video');
             video.srcObject = this.stream;
             video.setAttribute('playsinline', true);
@@ -39,7 +46,8 @@ export class FaceMeshSensor {
 
     stop() {
         this.running = false;
-        try { if (this.stream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        // Only tear down the stream if we created it
+        try { if (this._ownsStream && this.stream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
     }
 
     _ear(lm, pts) {
