@@ -1,22 +1,28 @@
 """FastAPI entry — routes, WebSocket session stream, CORS.
 
 Run: uvicorn backend.main:app --reload
-WebSocket: ws://localhost:8000/ws/session?session=calm&mode=simulator
+WebSocket: ws://localhost:8000/ws/session?session=calm&mode=1
+  mode: 1=simulator, 2=phone, 3=polar_h10
 """
 from __future__ import annotations
 import asyncio
 import json
+import os
 import time
+from datetime import datetime, timezone
 from typing import Optional, List
 
-from pydantic import BaseModel
-
 import numpy as np
+import sentry_sdk
+from pydantic import BaseModel
+from sentry_sdk.integrations.fastapi import FastApiIntegration
+from sentry_sdk.integrations.asyncpg import AsyncPGIntegration
 
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect, Query, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 
-from . import storage, whoop_api
+from .auth import validate_token, AuthError
+from . import db, whoop_api
 from .rf_calibration import BayesianRFOptimizer, compute_coherence_at_frequency, MODE_CALIBRATION_CONFIG
 from .affect_classifier import classify as classify_affect
 from .ans_classifier import classify as classify_ans
@@ -36,6 +42,18 @@ from .session_manager import SessionManager
 from .context.circadian import get_circadian_context, session_circadian_fit
 
 
+_SENTRY_DSN = os.environ.get("SENTRY_DSN")
+_ENVIRONMENT = os.environ.get("ENVIRONMENT", "development")
+
+if _SENTRY_DSN:
+    sentry_sdk.init(
+        dsn=_SENTRY_DSN,
+        environment=_ENVIRONMENT,
+        traces_sample_rate=0.2,
+        integrations=[FastApiIntegration(), AsyncPGIntegration()],
+    )
+
+
 app = FastAPI(title="Mission Alive API", version="1.0.0")
 
 app.add_middleware(
@@ -48,8 +66,14 @@ app.add_middleware(
 
 
 @app.on_event("startup")
-def _startup():
-    storage.init_db()
+async def startup():
+    if os.environ.get("DATABASE_URL"):
+        await db.init_pool()
+
+
+@app.on_event("shutdown")
+async def shutdown():
+    await db.close_pool()
 
 
 @app.get("/health")
@@ -65,11 +89,6 @@ def root():
         "sessions": list(PROFILES.keys()),
         "strategy_b_enabled": False,
     }
-
-
-@app.get("/sessions")
-def list_sessions(user_id: Optional[str] = None):
-    return {"sessions": storage.list_sessions(user_id=user_id)}
 
 
 @app.get("/whoop/auth_url")
@@ -114,30 +133,48 @@ async def end_session(req: SessionEndRequest):
 async def ws_session(
     websocket: WebSocket,
     session: str = Query("calm"),
-    mode: str = Query("simulator"),
+    mode: int = Query(1),
     duration_s: float = Query(600.0),
-    user_id: Optional[str] = Query(None),
 ):
-    """1Hz control loop.
+    """1Hz control loop. First message must be {"type":"auth","token":"<jwt>"}.
 
-    Simulator mode generates RR internally. For real sensor modes (polar/whoop),
-    the client sends computed RRs as JSON messages: {"rr": 812.5}.
+    mode: 1=simulator, 2=phone, 3=polar_h10
     """
     await websocket.accept()
 
-    if session not in PROFILES:
-        await websocket.send_json({"error": f"unknown session {session}"})
-        await websocket.close()
+    # --- Auth handshake (first message)
+    try:
+        auth_msg = await asyncio.wait_for(websocket.receive_json(), timeout=10.0)
+    except asyncio.TimeoutError:
+        await websocket.close(1008)
         return
+    if auth_msg.get("type") != "auth" or not auth_msg.get("token"):
+        await websocket.close(1008)
+        return
+    try:
+        user_claims = validate_token(auth_msg["token"])
+    except AuthError:
+        await websocket.close(1008)
+        return
+    user_id = user_claims["sub"]
+    sentry_sdk.set_user({"id": user_id, "email": user_claims.get("email")})
+    await websocket.send_json({"type": "auth_ok"})
 
-    sid = storage.create_session(
-        session_type=session,
-        sensor_mode=mode,
-        music_strategy="A",
-        user_id=user_id,
-    )
+    # Map mode int → simulator string for HRVSimulator (1=simulator, 2/3=real sensor)
+    mode_str = "simulator" if mode == 1 else "polar"
+    session_profile = session if session in PROFILES else "calm"
 
-    sim = HRVSimulator(session) if mode == "simulator" else None
+    # Create session row in Postgres (falls back gracefully if DB not configured)
+    sid = None
+    if os.environ.get("DATABASE_URL"):
+        sid = await db.create_session(
+            user_id=user_id,
+            session_type=session_profile,
+            mode=mode,
+            device_label=auth_msg.get("device_label"),
+        )
+
+    sim = HRVSimulator(session_profile) if mode == 1 else None
     flt = ArtifactFilter()
     proc = HRVProcessor()
     est = StateEstimator()
@@ -155,6 +192,8 @@ async def ws_session(
     fallback_triggered = False
     discard_flag = False
     state_dom_counter: dict[str, int] = {}
+    vs_result: dict = {}
+    metrics = None
 
     # RF calibration state — per-session, reset on each WebSocket connection
     rf_optimizer = BayesianRFOptimizer()  # default prior; no height/prior_rf without user profile
@@ -163,7 +202,7 @@ async def ws_session(
     rf_coherence = 0.0
     current_mode = 2  # default Mode 2 (H10); updated from session start message if available
     _rf_config = MODE_CALIBRATION_CONFIG[current_mode]
-    session_manager = SessionManager(session_type=session, mode=current_mode)
+    session_manager = SessionManager(session_type=session_profile, mode=current_mode)
     circadian_ctx = get_circadian_context("UTC")  # timezone from client in Phase H
     _settling_start = t_start
     _rr_buffer: list[float] = []  # rolling buffer of accepted RR intervals for RF coherence
@@ -228,7 +267,7 @@ async def ws_session(
             state = est.update(metrics)
             if rmssd_start is None:
                 rmssd_start = metrics.rmssd
-                traj = Trajectory(session=session, duration_s=duration_s, start=state)
+                traj = Trajectory(session=session_profile, duration_s=duration_s, start=state)
 
             target = traj.target_at(elapsed) if traj else state
 
@@ -282,18 +321,36 @@ async def ws_session(
                 # --- Dynamics + MPC
                 _steered = dyn.step(state, target, dt=1.0)
                 best_params, strategy, score = optimize(
-                    state=state, target=target, session=session, prev_params=prev_params
+                    state=state, target=target, session=session_profile, prev_params=prev_params
                 )
                 prev_params = best_params
 
             # --- Persist snapshot
-            storage.log_snapshot(
-                session_id=sid,
-                t_offset=elapsed,
-                metrics=metrics.to_dict(),
-                state=state.to_dict(),
-                params=best_params,
-            )
+            if sid and os.environ.get("DATABASE_URL"):
+                ls = latent_extractor.compute(metrics, mode=current_mode)
+                await db.write_snapshot(
+                    session_id=sid,
+                    user_id=user_id,
+                    epoch_s=int(elapsed),
+                    metrics={
+                        "rmssd": metrics.rmssd,
+                        "sdnn": metrics.sdnn,
+                        "lf_hf": metrics.lf_hf,
+                        "dfa_a1": metrics.dfa_a1,
+                        "svi": getattr(metrics, "svi", None),
+                        "poincare_sd1": getattr(metrics, "poincare_sd1", None),
+                        "poincare_sd2": getattr(metrics, "poincare_sd2", None),
+                        "vs_score": vs_result.get("vs"),
+                        "ans_state": last_ans,
+                        "arc_phase": session_manager.current_phase,
+                        "rf_coherence": rf_coherence,
+                        "rf_locked": rf_locked,
+                        "ls_arousal": ls.arousal,
+                        "ls_valence": ls.valence,
+                        "ls_regulation": ls.regulation,
+                        "ls_engagement": ls.engagement,
+                    },
+                )
 
             # --- Emit frame
             await websocket.send_json({
@@ -318,31 +375,34 @@ async def ws_session(
         pass
     finally:
         # Finalize session record (skipped on discard — snapshots kept, no final metrics)
-        if not discard_flag and last_state is not None and rmssd_start is not None:
-            from .insight_engine import SessionSummary, generate_insight
-            dominant = max(state_dom_counter, key=state_dom_counter.get) if state_dom_counter else "unknown"
-            summary = SessionSummary(
-                session=session,
-                duration_s=time.time() - t_start,
-                rmssd_start=rmssd_start,
-                rmssd_end=metrics.rmssd if metrics else rmssd_start,
-                arousal_start=last_state.arousal,  # crude; frontend can pass true start
-                arousal_end=last_state.arousal,
-                dominant_state=dominant,
-                fallback_triggered=fallback_triggered,
-                sensor_mode=mode,
-            )
-            insight = generate_insight(summary)
-            storage.finish_session(
-                session_id=sid,
-                rmssd_start=rmssd_start,
-                rmssd_end=metrics.rmssd if metrics else rmssd_start,
-                arousal_start=last_state.arousal,
-                arousal_end=last_state.arousal,
-                dominant_state=dominant,
-                fallback_triggered=fallback_triggered,
-                insight=insight,
-            )
+        if not discard_flag and last_state is not None and rmssd_start is not None and sid:
+            if os.environ.get("DATABASE_URL"):
+                elapsed_total = int(time.time() - t_start)
+                final_vs_val = vs_result.get("vs", 0) if vs_result else 0
+                peak_vs_val = max(
+                    h.get("vs", 0) if isinstance(h, dict) else 0
+                    for h in [{"vs": final_vs_val}]
+                )
+                await db.finish_session(
+                    session_id=sid,
+                    outcome={
+                        "ended_at": datetime.now(timezone.utc).isoformat(),
+                        "duration_s": elapsed_total,
+                        "peak_vs": peak_vs_val,
+                        "final_vs": final_vs_val,
+                        "skill_transfer_score": final_vs_val / 100.0 if final_vs_val else None,
+                        "rf_locked": rf_locked,
+                        "rf_bpm": rf_bpm,
+                        "rf_lock_epoch_s": getattr(rf_optimizer, "_lock_epoch", None),
+                        "arc_phases_completed": session_manager.phases_completed,
+                        "circadian_phase": circadian_ctx.get("phase"),
+                        "circadian_fit_score": circadian_ctx.get("fit_score"),
+                        "rr_total": len(_rr_buffer),
+                        "rr_rejected": flt.rejected_count if hasattr(flt, "rejected_count") else None,
+                        "sqi_mean": None,
+                        "discarded": False,
+                    },
+                )
         try:
             await websocket.close()
         except Exception:
