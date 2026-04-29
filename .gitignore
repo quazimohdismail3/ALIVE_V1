@@ -67,3 +67,4 @@ mission_alive.db
 # Logs
 logs/
 *.log
+.worktrees/
