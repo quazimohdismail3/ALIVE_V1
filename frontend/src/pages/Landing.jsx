@@ -47,27 +47,27 @@ const SESSIONS = [
   },
 ];
 
-// mode sent to backend: Phone Only → 2 (real sensor path), H10 → 2, Phone+H10 → 3
-// NOTE: backend mode 1 = simulator; we never send that.
+// sensorMode: used by SensorFusion (1=rPPG+sensors, 2=H10 only, 3=H10+sensors)
+// backendMode: sent to backend WS (1=simulator[unused], 2=real sensor, 3=real+polar)
 const MODES = [
   {
-    id: 2,
-    frontendMode: 2,
+    sensorMode: 1,
+    backendMode: 2,
     label: 'Phone Only',
     desc: 'Rear camera rPPG + face + pose + mic. No hardware needed.',
     badge: 'Medium confidence',
   },
   {
-    id: 2,
-    frontendMode: 2,
+    sensorMode: 2,
+    backendMode: 2,
     label: 'Polar H10',
     desc: 'ECG-grade RR intervals. Cleanest HRV signal.',
     badge: 'High confidence',
     key: 'h10',
   },
   {
-    id: 3,
-    frontendMode: 3,
+    sensorMode: 3,
+    backendMode: 3,
     label: 'Phone + Polar H10',
     desc: 'All sensors combined. Best science.',
     badge: 'Highest confidence',
@@ -94,7 +94,8 @@ export default function Landing({ onStart }) {
   function handleStart() {
     onStart({
       session: sessionId,
-      mode: selectedMode.frontendMode,
+      sensorMode: selectedMode.sensorMode,
+      backendMode: selectedMode.backendMode,
     });
   }
 

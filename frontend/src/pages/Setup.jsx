@@ -11,15 +11,15 @@ import { useWakeLock } from '../hooks/useWakeLock.js';
  * On ready: calls onReady({ ...cfg, timezone })
  */
 export default function Setup({ cfg, onReady, onBack }) {
-  const { start, stop, sensorStatus, error } = useSensorFusion();
+  const { start, stop, sensorStatus, error, getFusion } = useSensorFusion();
   const { acquire } = useWakeLock();
   const [step, setStep]         = useState(1);
   const [bleStatus, setBleStatus] = useState('idle'); // idle|scanning|paired|error
   const previewRef               = useRef(null);
   const streamRef                = useRef(null);
 
-  const needsCamera = cfg?.mode === 1 || cfg?.mode === 3;
-  const needsBLE    = cfg?.mode === 2 || cfg?.mode === 3;
+  const needsCamera = cfg?.sensorMode === 1 || cfg?.sensorMode === 3;
+  const needsBLE    = cfg?.sensorMode === 2 || cfg?.sensorMode === 3;
 
   // Step 1: request camera permission + preview
   useEffect(() => {
@@ -40,7 +40,7 @@ export default function Setup({ cfg, onReady, onBack }) {
     setStep(2);
     if (!needsBLE) {
       // No BLE — start sensors and go straight to session
-      await start(cfg.mode);
+      await start(cfg.sensorMode);
       await acquire();
     }
   }
@@ -49,7 +49,7 @@ export default function Setup({ cfg, onReady, onBack }) {
     setBleStatus('scanning');
     try {
       // SensorFusion.start() handles BLE pairing internally
-      await start(cfg.mode);
+      await start(cfg.sensorMode);
       setBleStatus('paired');
       await acquire();
     } catch (e) {
@@ -59,7 +59,7 @@ export default function Setup({ cfg, onReady, onBack }) {
 
   async function beginSession() {
     const timezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
-    onReady({ ...cfg, timezone });
+    onReady({ ...cfg, timezone, fusion: getFusion() });
   }
 
   const sensorReady = sensorStatus === 'ready';
@@ -125,7 +125,7 @@ export default function Setup({ cfg, onReady, onBack }) {
               {needsCamera && (
                 <PermRow label="Camera" ok={!!streamRef.current} note="Rear camera for rPPG" />
               )}
-              {cfg?.mode !== 2 && (
+              {cfg?.sensorMode !== 2 && (
                 <PermRow label="Microphone" ok={false} note="Breath detection" />
               )}
             </div>

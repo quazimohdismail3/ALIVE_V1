@@ -11,13 +11,15 @@ export class BleH10Sensor {
         try {
             const device = await navigator.bluetooth.requestDevice({
                 filters: [{ namePrefix: 'Polar H10' }],
-                optionalServices: ['fb005c80-02e7-f387-1cad-8acd2d8df0c8']
+                optionalServices: ['heart_rate']
             });
             this._device = device;
             const server = await device.gatt.connect();
             this._server = server;
-            const service = await server.getPrimaryService('fb005c80-02e7-f387-1cad-8acd2d8df0c8');
-            const char = await service.getCharacteristic('fb005c81-02e7-f387-1cad-8acd2d8df0c8');
+            // Standard HR GATT: service 0x180D, char 0x2A37 (Heart Rate Measurement)
+            // RR intervals are in 1/1024s units within the HR measurement packet
+            const service = await server.getPrimaryService('heart_rate');
+            const char = await service.getCharacteristic('heart_rate_measurement');
             await char.startNotifications();
             char.addEventListener('characteristicvaluechanged', (e) => this._onData(e.target.value));
         } catch (err) {
@@ -30,15 +32,24 @@ export class BleH10Sensor {
     }
 
     _onData(data) {
-        // H10 PMD RR format: bytes 0-1 = flags, then RR pairs in 1/1024s units
+        // HR GATT 0x2A37: byte 0 = flags
+        //   bit 0: HR format (0=uint8, 1=uint16)
+        //   bit 4: RR intervals present
         const view = new DataView(data.buffer);
-        for (let i = 2; i < data.byteLength - 1; i += 2) {
-            const rr_1024 = view.getUint16(i, true);
+        const flags = view.getUint8(0);
+        const hr16bit = (flags & 0x01) !== 0;
+        const rrPresent = (flags & 0x10) !== 0;
+        if (!rrPresent) return;
+        // Skip flags byte + HR value byte(s)
+        let offset = 1 + (hr16bit ? 2 : 1);
+        while (offset + 1 < data.byteLength) {
+            const rr_1024 = view.getUint16(offset, true);
             const rr_ms = (rr_1024 / 1024) * 1000;
             if (rr_ms > 300 && rr_ms < 2000) {
                 this.rrBuffer.push(rr_ms);
                 if (this.rrBuffer.length > 200) this.rrBuffer.shift();
             }
+            offset += 2;
         }
     }
 

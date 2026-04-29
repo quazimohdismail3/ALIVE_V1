@@ -39,5 +39,7 @@ export function useSensorFusion() {
     return fusionRef.current?.getReading?.() ?? null;
   }, []);
 
-  return { start, stop, getReading, sensorStatus, error };
+  const getFusion = useCallback(() => fusionRef.current, []);
+
+  return { start, stop, getReading, getFusion, sensorStatus, error };
 }

@@ -44,7 +44,7 @@ async function postSessionEnd(summary) {
 }
 
 export default function Session({ cfg, onEnd, onDiscard }) {
-  const { session, mode, timezone } = cfg ?? {};
+  const { session, sensorMode, backendMode, timezone } = cfg ?? {};
   const { acquire, release } = useWakeLock();
   const { push: accumPush, summarize, reset: accumReset } = useSessionAccum();
 
@@ -99,14 +99,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       if (cancelled) return;
 
       // B2 fix: pass cfg.session (not token+timestamp) as first arg
-      const ws = new WSClient(session, mode, authToken, handleWsMessage, { timezone });
+      const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone });
       ws.connect();
       wsRef.current = ws;
 
-      // Sensor fusion
-      const fusion = new SensorFusion(mode);
+      // Reuse fusion from Setup (already has sensors started + BLE paired).
+      // Only create a new one if cfg.fusion is absent (e.g., direct navigation).
+      const fusion = cfg?.fusion ?? new SensorFusion(sensorMode ?? 1);
       fusionRef.current = fusion;
-      fusion.start().catch(() => {});
+      if (!cfg?.fusion) fusion.start().catch(() => {});
 
       // Audio
       const audio = new SessionAudio(session);
