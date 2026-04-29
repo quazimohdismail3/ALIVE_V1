@@ -261,6 +261,14 @@ async def ws_session(
                 if r.accepted is not None:
                     proc.push(r.accepted)
                     _rr_buffer.append(r.accepted)
+                if sid and os.environ.get("DATABASE_URL"):
+                    asyncio.create_task(db.write_rr(
+                        session_id=sid,
+                        user_id=user_id,
+                        rr_ms=r.accepted if r.accepted is not None else rr,
+                        accepted=r.accepted is not None,
+                        source=mode_str,
+                    ))
 
             metrics = proc.compute()
             if metrics is None:
