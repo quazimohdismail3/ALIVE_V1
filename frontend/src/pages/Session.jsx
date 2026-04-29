@@ -192,7 +192,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     const summary = summarize();
     if (summary) {
       summary.session_type = session;
-      summary.mode = mode;
+      summary.mode = backendMode ?? 2;
       await postSessionEnd(summary);
     }
     onEnd(summary);
@@ -293,7 +293,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           </div>
           <div className="v2-card">
             <div style={{ color: 'var(--text-dim)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Sensors</div>
-            <SensorStatusBar mode={mode} sensorStatus="ready" rfLocked={frame?.rf_locked} />
+            <SensorStatusBar mode={sensorMode} sensorStatus="ready" rfLocked={frame?.rf_locked} />
           </div>
         </div>
 
