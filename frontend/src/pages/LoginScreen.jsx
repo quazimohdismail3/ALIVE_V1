@@ -10,6 +10,7 @@ export default function LoginScreen() {
 
   async function handleLogin(e) {
     e.preventDefault()
+    if (!supabase) { setError('Supabase not configured.'); return }
     setLoading(true)
     setError(null)
     const { error } = await supabase.auth.signInWithPassword({ email, password })
@@ -19,6 +20,7 @@ export default function LoginScreen() {
   }
 
   async function handleForgotPassword() {
+    if (!supabase) { setError('Supabase not configured.'); return }
     if (!email) { setError('Enter your email first.'); return }
     const { error } = await supabase.auth.resetPasswordForEmail(email)
     if (error) setError(error.message)
