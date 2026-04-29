@@ -7,7 +7,9 @@ from __future__ import annotations
 import asyncio
 import json
 import time
-from typing import Optional
+from typing import Optional, List
+
+from pydantic import BaseModel
 
 import numpy as np
 
@@ -82,6 +84,30 @@ async def whoop_daily(access_token: str):
     if not whoop_api.is_configured():
         raise HTTPException(status_code=503, detail="WHOOP not configured")
     return await whoop_api.daily_metrics(access_token)
+
+
+class SessionEndRequest(BaseModel):
+    session_id: str
+    session_type: str
+    mode: int
+    peak_vs: int
+    final_vs: int
+    phases_completed: List[dict] = []
+    hrv_summary: dict = {}
+    circadian_phase: str = "UNKNOWN"
+    circadian_fit_score: float = 0.5
+
+
+@app.post("/api/session/end")
+async def end_session(req: SessionEndRequest):
+    skill_transfer = round(req.final_vs / max(req.peak_vs, 1), 2) if req.peak_vs > 0 else None
+    return {
+        "session_id": req.session_id,
+        "skill_transfer_score": skill_transfer,
+        "peak_vs": req.peak_vs,
+        "final_vs": req.final_vs,
+        "stored": True,
+    }
 
 
 @app.websocket("/ws/session")

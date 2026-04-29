@@ -7,6 +7,28 @@ import CoherenceBar from '../ui/CoherenceBar.jsx';
 import PhaseIndicator from '../ui/PhaseIndicator.jsx';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
 
+const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+async function postSessionEnd(summary) {
+    try {
+        await fetch(`${API_URL}/api/session/end`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                session_id: `session-${Date.now()}`,
+                session_type: summary.session_type,
+                mode: summary.mode,
+                peak_vs: summary.peak_vs,
+                final_vs: summary.final_vs,
+                phases_completed: summary.phases_completed,
+                hrv_summary: summary.hrv_summary,
+                circadian_phase: summary.circadian_phase,
+                circadian_fit_score: summary.circadian_fit_score,
+            }),
+        });
+    } catch (_) {} // silent — never crash on report POST
+}
+
 const INITIAL = {
     vs: { vs: 0, confidence: 'LOW' },
     state: '',
@@ -22,11 +44,16 @@ export default function Session({ mode, token, session, onEnd }) {
     const wsRef = useRef(null);
     const fusionRef = useRef(null);
     const sendIntervalRef = useRef(null);
+    const peakVsRef = useRef(0);
 
     useEffect(() => {
         const sessionId = `${token}-${Date.now()}`;
         const ws = new WSClient(sessionId, mode, (msg) => {
-            if (msg.type === 'state_update') setData(msg);
+            if (msg.type === 'state_update') {
+                setData(msg);
+                const vsVal = typeof msg.vs === 'object' ? (msg.vs?.vs ?? 0) : (msg.vs ?? 0);
+                if (vsVal > peakVsRef.current) peakVsRef.current = vsVal;
+            }
         });
         ws.connect();
         wsRef.current = ws;
@@ -70,10 +97,24 @@ export default function Session({ mode, token, session, onEnd }) {
             <BreathRing rfBpm={data.rf_bpm} locked={data.rf_locked} />
             <CoherenceBar coherence={data.rf_coherence} locked={data.rf_locked} />
             <div style={{ marginTop: 32, textAlign: 'center' }}>
-                <button onClick={onEnd}
-                        style={{ padding: '12px 32px', borderRadius: 10, fontSize: 14,
-                                 background: 'transparent', border: '1px solid #2a2a2a',
-                                 color: '#444', cursor: 'pointer' }}>
+                <button
+                    onClick={() => {
+                        const finalVs = typeof data.vs === 'object' ? (data.vs?.vs ?? 0) : (data.vs ?? 0);
+                        const summary = {
+                            peak_vs: peakVsRef.current,
+                            final_vs: finalVs,
+                            mode: mode,
+                            session_type: session,
+                            phases_completed: [],
+                            hrv_summary: {},
+                            circadian_fit_score: 0.5,
+                            circadian_phase: '',
+                        };
+                        postSessionEnd(summary).then(() => onEnd(summary));
+                    }}
+                    style={{ padding: '12px 32px', borderRadius: 10, fontSize: 14,
+                             background: 'transparent', border: '1px solid #2a2a2a',
+                             color: '#444', cursor: 'pointer' }}>
                     End session
                 </button>
             </div>
