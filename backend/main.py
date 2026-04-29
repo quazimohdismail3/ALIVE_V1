@@ -187,6 +187,7 @@ async def ws_session(
     prev_params: dict | None = None
     t_start = time.time()
     rmssd_start: float | None = None
+    arousal_start: float | None = None
     last_state = None
     last_ans = None
     fallback_triggered = False
@@ -252,8 +253,10 @@ async def ws_session(
                     pass
 
             # --- Filter + metrics
+            sqi = None
             for rr in rrs:
                 r = flt.push(rr)
+                sqi = r.sqi
                 if r.accepted is not None:
                     proc.push(r.accepted)
                     _rr_buffer.append(r.accepted)
@@ -261,6 +264,10 @@ async def ws_session(
             metrics = proc.compute()
             if metrics is None:
                 await websocket.send_json({"status": "buffering", "n_rr": len(proc.buf)})
+                continue
+
+            if sqi is not None and sqi < flt.sqi_threshold:
+                await websocket.send_json({"status": "low_sqi", "sqi": round(sqi, 3)})
                 continue
 
             # --- State estimation

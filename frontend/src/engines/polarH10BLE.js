@@ -141,7 +141,7 @@ export class PolarH10BLE {
     this.status = 'reconnecting'
     this._emit()
 
-    for (let attempt = 1; attempt <= 7; attempt++) {
+    for (let attempt = 1; attempt <= 5; attempt++) {
       this.reconnectAttempt = attempt
       this._emit()
 

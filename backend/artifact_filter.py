@@ -18,6 +18,16 @@ ABS_MAX_MS = 2000.0
 RELATIVE_MAX = 0.25  # 25% jump = artifact (motion, ectopic)
 SQI_WINDOW = 30
 
+_SQI_THRESHOLDS: dict[str, float] = {
+    'calm':        0.80,
+    'recovery':    0.75,
+    'adhd':        0.75,
+    'energy':      0.60,
+    'breathwork':  0.65,
+    'presence':    0.75,
+    'calibration': 0.95,
+}
+
 
 @dataclass
 class FilterResult:
@@ -26,10 +36,15 @@ class FilterResult:
 
 
 class ArtifactFilter:
-    def __init__(self, window: int = SQI_WINDOW):
+    def __init__(self, session_type: str = 'calm', window: int = SQI_WINDOW):
+        self.session_type = session_type
         self.window = window
         self.last_accepted: float | None = None
         self.history: deque[bool] = deque(maxlen=window)
+
+    @property
+    def sqi_threshold(self) -> float:
+        return _SQI_THRESHOLDS.get(self.session_type, 0.70)
 
     def push(self, rr_ms: float) -> FilterResult:
         ok = self._check(rr_ms)

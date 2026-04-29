@@ -1,3 +1,4 @@
+
 # Discard Session — Design Spec
 **Date:** 2026-04-13  
 **Status:** Approved  

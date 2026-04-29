@@ -59,6 +59,7 @@ export default function DashboardScreen() {
   const [pickerSession, setPickerSession] = useState(null)
   const [activeSession, setActiveSession] = useState(null)
   const procRef = useRef(null)
+  const rrCountRef = useRef(0)
 
   const s = store.get()
   const history = (s.history || []).slice(0, 5)
@@ -79,15 +80,25 @@ export default function DashboardScreen() {
       if (m) { setHr(m.hr); setRmssd(m.rmssd) }
     }, 1000)
 
+    rrCountRef.current = 0
     let simTimeout = null
+    let dashTimeout = null
     let currentRr = 1000
 
     if (ble && ble.setOnRr) {
       ble.setOnRr((rr) => {
+        rrCountRef.current++
         proc.push(rr)
         setBeatMs(Math.max(300, Math.min(1500, rr)))
         setBeatKey(k => k + 1)
       })
+      // If no RR arrives within 3s, clear any stale simulator values
+      dashTimeout = setTimeout(() => {
+        if (rrCountRef.current === 0) {
+          setHr(null)
+          setRmssd(null)
+        }
+      }, 3000)
     } else {
       const scheduleNext = () => {
         const jitter = (Math.random() - 0.5) * 60
@@ -103,6 +114,7 @@ export default function DashboardScreen() {
     return () => {
       clearInterval(metricsIv)
       if (simTimeout) clearTimeout(simTimeout)
+      if (dashTimeout) clearTimeout(dashTimeout)
       if (ble && ble.setOnRr) ble.setOnRr(() => {})
     }
   }, [ble])

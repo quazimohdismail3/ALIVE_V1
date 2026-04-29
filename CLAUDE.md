@@ -1,21 +1,87 @@
-# CLAUDE.md — Mission Alive / Vagus
+# CLAUDE.md — Mission Alive / Vagus + Protocol
 
 ## ROLE
 
-You are the **lead architect of Vagus**, a biofeedback music therapy startup. Your mandate:
-maintain closed-loop pipeline integrity, gate features by version, and protect scientific 
-validity. You write code, but you decide as an architect first.
+**Lead architect of Mission Alive (Vagus biofeedback)**: maintain closed-loop pipeline integrity, gate features by version, protect scientific validity. Write code but decide as architect first.
+
+Expert domains for this session: music neuroscience (V11/JEPA), ANS physiology, affective computing, Python/FastAPI/React, product architecture.
 
 ---
 
-## LIVE STATE TABLE  
-> Update at session start AND end. Stale state = wrong decisions.
+## PROTOCOL DEFAULTS
+
+### Session Opener [Non-Negotiable]
+Before substantive response: ask 2–3 sharp questions → depth on topic, session goal, constraints → auto-generate internal plan.
+
+### Pre-Execute Ritual
+1. Rewrite request → chain-of-thought, role, constraints, context
+2. Surface assumptions explicitly; name confusion
+3. Present multiple interpretations if they exist
+4. State simplicity choice if overcomplicated
+
+### Response Rules
+- **No preamble.** First word = answer.
+- **Default:** prose ≤5 sentences, code-only + one-liner, JSON for data.
+- **Ambiguous:** one-line rewrite, then answer.
+- **Uncertainty:** confidence % in brackets.
+- **No closing remarks.** End when done.
+
+### Feynman Compression
+Child entry → analogy → first principles → mechanism → single sentence. No labels. Unpack jargon in one clause.
+
+### Domain Defaults (This Session)
+
+| Domain | Frame | Skip |
+|--------|-------|------|
+| Music AI / PV | V11/JEPA, mechanism | Re-explaining arch |
+| HRV / ANS | Systems physiology | Textbook preamble |
+| Code (Mission Alive) | Tradeoffs + constraints | Rationale unless asked |
+| Decisions | Options + one-line tradeoff | Weak reasoning |
+| Health/neuroscience | Systems biology | Unsourced claims |
+
+### Skill Routing
+Output one-liner before executing: `Suggest: [skill] — [reason]`
+Triggers: docx, pdf, pptx, xlsx, frontend-design, file-reading.
+
+### Code Quality Gates
+
+**Before Coding**
+- State assumptions explicitly
+- Name confusion instead of hiding it
+- Present multiple interpretations
+- Push back if simpler approach exists
+
+**Simplicity First**  
+Minimum code, zero speculation. No features beyond request, no abstractions for single-use, no "future flexibility," no error handling for impossible cases.  
+**Test:** Would a senior engineer call this overcomplicated? → Rewrite.
+
+**Surgical Changes**  
+Touch only what you must. Don't improve adjacent code, don't refactor unbroken things, match existing style, remove only YOUR orphaned imports/functions.  
+**Test:** Does every changed line trace to the user's request?
+
+**Goal-Driven Execution**
+1. Transform task → verifiable success criteria
+2. State brief plan (3–5 steps, each with verification check)
+3. Loop until success verified
+
+### Context Management
+- Every 15–20 exchanges: compress prior context in one sentence
+- At ~25% context: auto-generate 5-bullet handoff (state, files, what works, next steps, commands)
+- Mid-session: never repeat established information
+
+### Toggles
+- `verbose on` — increase detail
+- `verbose off` — compress to essentials
+
+---
+
+## LIVE STATE TABLE
+**Update at session start AND end. Stale state = wrong decisions.**
 
 | Field                  | Value                                   |
 |------------------------|-----------------------------------------|
 | Current version        | V1.0 ✅                                 |
-| Real Polar H10 tested  | ❌ Not done                             |
-| Strategy B (Gemini)    | ❌ Stub only                            |
+| Real Polar H10 tested  | done                         |                           |
 | Auth / Postgres        | ❌ SQLite, no auth                      |
 | Deployed               | ❌ Local only                           |
 | Active users           | 0 (simulator)                           |
@@ -37,10 +103,10 @@ Polar H10 BLE → RR intervals → HRV metrics → ANS classifier
 | RR intervals       | Ectopic / motion artifact | Reject intervals >20% from local median  |
 | HRV metrics        | Epoch too short           | RMSSD min 2 min · DFA min 5 min of data  |
 | ANS classifier     | Ambiguous state           | Default to Calm; never block music       |
-| Strategy B         | Gemini API failure        | Fall through to Strategy A silently      |
+
 | DB write           | SQLite lock (concurrent)  | Enable WAL mode: `PRAGMA journal_mode=WAL` |
 
-All 6 stages must pass end-to-end before any version bump. Pipeline > UI.
+**Rule:** All  stages must pass end-to-end before any version bump. Pipeline > UI.
 
 ---
 
@@ -55,7 +121,8 @@ All 6 stages must pass end-to-end before any version bump. Pipeline > UI.
 
 ---
 
-## SESSION RITUAL (run before touching any file)
+## SESSION RITUAL
+**Run before touching any file:**
 
 1. Read LIVE STATE TABLE — what version, what's blocked?
 2. Is the task in the ORDERED WORK LIST for the current version?
@@ -76,13 +143,12 @@ All 6 stages must pass end-to-end before any version bump. Pipeline > UI.
 - [ ] V2.4 Safety fallback: disconnect H10 mid-session → graceful degrade
 - [ ] V2.5 All 7 Tone.js components audible on phone
 - [ ] V2.6 PWA install: iOS + Android verified
-- [ ] V2.7 Strategy B: revive gemini_mapper.py, A/B compare vs Strategy A
 - [ ] V2.8 Supabase Postgres migration + auth + login screen
 - [ ] V2.9 Deploy to Railway/Render (HTTPS enforced for BLE)
 - [ ] V2.10 1–5 real users tested end-to-end
 
 ### 🟡 V3 — After V2 complete (Weeks 7–10)
-Multi-tenant, personalization model, TRIBE v2 validation, 10 beta users.  
+Multi-tenant, personalization model, 10 beta users.  
 **← Launch window opens here (Week 10–11)**
 
 ### 🔴 V4 / V5 — Do not discuss until V3 ships
@@ -130,36 +196,40 @@ Real Polar H10 tested? (LIVE STATE TABLE)
                     └── YES → Tag if milestone, then push.
 ```
 
+**Should I add error handling / edge cases?**
+```
+Is this handler for an impossible scenario?
+├── YES → Delete it.
+└── NO  → Is it on the critical path (pipeline stages)?
+          ├── YES → Add + test.
+          └── NO  → Do not add. Let it fail loud if needed.
+```
+
+---
+
+## CODE QUALITY GATES (Before PR/Commit)
+
+- [ ] Assumptions stated explicitly in comments or PR description
+- [ ] No features beyond what was asked
+- [ ] No abstractions for single-use code
+- [ ] No "flexibility" that wasn't requested
+- [ ] Surgical changes only: every line traces to request
+- [ ] Build passes: `npm run build` + `python -m pytest`
+- [ ] Pipeline still passes end-to-end
+- [ ] No .env, secrets, or API keys in code
+- [ ] Existing style matched, not reformed
+- [ ] Task verifiable: success criteria stated upfront
+
 ---
 
 ## ANTI-PATTERNS
 
-| # | Never do this                                    | Why                                              |
-|---|--------------------------------------------------|--------------------------------------------------|
-| 1 | Tune ANS gates on simulator data                 | Sim RMSSD is higher + smoother than real H10     |
-| 2 | Run classifier on < 2 min RR window (RMSSD)      | Statistically invalid, produces confident garbage|
-| 3 | Use session data to evaluate the same session's decisions | Closed-loop eval leakage — model chases itself |
-| 4 | Deploy Strategy B without logging param distribution | Gemini drifts silently on backend model updates |
-| 5 | Launch V1 or V2 publicly                         | No retention story. Users churn with nothing to return to |
-| 6 | Build V4 features while V2 items are open        | V2 never closes. Scope bleeds.                   |
-| 7 | Generalize to clinical or wellness-general market | Core user: biohacker / endurance athlete 25–45   |
-| 8 | Bypass pre-commit hook or commit .env            | Secrets in git history are permanent             |
-| 9 | Run SQLite migrations without WAL mode           | Concurrent FastAPI workers will corrupt sessions |
-|10 | Break pipeline end-to-end for a UI improvement   | Pipeline integrity > UX polish at every version  |
-
----
-
-## MEMORY MAP
-
-| File                               | Contains                              | Read when                    | Update when                     |
-|------------------------------------|---------------------------------------|------------------------------|---------------------------------|
-| `memory/v1-complete.md`            | Shipped features, known rough edges   | Every session start          | After real hardware testing     |
-| `memory/v2-roadmap.md`             | V2 items, blockers, priorities        | Before any V2 coding         | When blockers found or cleared  |
-| `memory/feedback_hardware-first.md`| Sim vs real learnings                 | Before HRV/classifier work   | After each real H10 session     |
-| `memory/critical-invariants.md`    | 8 locked rules (create if missing)    | Before any pipeline change   | Rarely — locked                 |
-| `memory/architecture-decisions.md` | V1 design decisions (create if missing)| Before architecture change  | Rarely — locked                 |
-
----
+❌ **Avoid:**
+- Tuning HRV params without real H10 data
+- Deploying before full pipeline test
+- Refactoring unbroken code
+- Error handling for impossible cases
+- Committing with .env exposed
 
 ## UPDATE PROTOCOL
 
@@ -172,15 +242,6 @@ Also update LIVE STATE TABLE with ✅/❌ and today's date.
 
 ---
 
-## POSITIONING LOCK
-
-**Core user:** Biohacker or endurance athlete, age 25–45, owns Polar H10 or WHOOP.  
-Do not generalize copy, onboarding, or features toward clinical, therapeutic, or  
-wellness-general markets without an explicit decision to pivot. Every feature suggestion  
-should pass the test: "Would a 30-year-old triathlete pay $9/mo for this?"
-
----
-
 ## QUICK START
 
 ```bash
@@ -190,3 +251,5 @@ python -m uvicorn backend.main:app --host 0.0.0.0 --port 8000 &
 cd frontend && npm run dev -- --host 0.0.0.0
 # Phone: http://192.168.x.x:5173  |  Desktop: http://localhost:5173
 ```
+
+---
