@@ -18,7 +18,7 @@ def _make_token(sub="user-123", exp_offset=3600, secret=_HS256_KEY, role="authen
 
 
 def test_valid_token_returns_user_id(monkeypatch):
-    monkeypatch.setenv("SUPABASE_JWT__HS256_KEY", _HS256_KEY)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", _HS256_KEY)
     token = _make_token()
     result = validate_token(token)
     assert result["sub"] == "user-123"
@@ -26,27 +26,27 @@ def test_valid_token_returns_user_id(monkeypatch):
 
 
 def test_expired_token_raises(monkeypatch):
-    monkeypatch.setenv("SUPABASE_JWT__HS256_KEY", _HS256_KEY)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", _HS256_KEY)
     token = _make_token(exp_offset=-10)
     with pytest.raises(AuthError, match="expired"):
         validate_token(token)
 
 
 def test_wrong_secret_raises(monkeypatch):
-    monkeypatch.setenv("SUPABASE_JWT__HS256_KEY", _HS256_KEY)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", _HS256_KEY)
     token = _make_token(secret="wrong-secret-32-chars-exactly!!!")
     with pytest.raises(AuthError, match="invalid"):
         validate_token(token)
 
 
 def test_malformed_token_raises(monkeypatch):
-    monkeypatch.setenv("SUPABASE_JWT__HS256_KEY", _HS256_KEY)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", _HS256_KEY)
     with pytest.raises(AuthError, match="invalid"):
         validate_token("not.a.token")
 
 
 def test_missing_sub_raises(monkeypatch):
-    monkeypatch.setenv("SUPABASE_JWT__HS256_KEY", _HS256_KEY)
+    monkeypatch.setenv("SUPABASE_JWT_SECRET", _HS256_KEY)
     payload = {"role": "authenticated", "exp": int(time.time()) + 3600, "aud": "authenticated"}
     token = pyjwt.encode(payload, _HS256_KEY, algorithm="HS256")
     with pytest.raises(AuthError, match="missing sub"):
