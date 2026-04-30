@@ -303,6 +303,7 @@ async def ws_session(
                     dwell_start = time.time()
 
                 # Emit cal frame ~1Hz
+                _cm = proc.compute()
                 await websocket.send_json({
                     "cal": True,
                     "target_bpm": round(float(target_bpm), 2),
@@ -310,6 +311,12 @@ async def ws_session(
                     "coherence_so_far": round(float(coherence_so_far), 3),
                     "n_rr": len(_rr_buffer),
                     "elapsed": round(now - cal_start_t, 1),
+                    "hrv": {
+                        "rmssd": round(_cm.rmssd, 1),
+                        "sdnn":  round(_cm.sdnn,  1),
+                        "hr":    round(_cm.hr,    1),
+                        "artifact_rate": round(_cm.artifact_rate, 4),
+                    } if _cm is not None else None,
                 })
         except WebSocketDisconnect:
             pass
