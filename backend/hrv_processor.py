@@ -38,6 +38,10 @@ class HRVMetrics:
     mean_rr: float        # ms
     hr: float             # bpm
     n_rr: int
+    # Quality scalars (P2) — UNTUNED: thresholds pending ≥3 real H10 sessions
+    artifact_rate: float = 0.0   # fraction of RR diffs flagged as artifacts
+    mean_sqi: float = 1.0        # signal quality index proxy (0–1)
+    hr_drift_bpm: float = 0.0    # HR drift = max(HR) − min(HR) over session
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -84,6 +88,11 @@ class HRVProcessor:
         mean_rr = float(np.mean(rr_short))
         hr = 60_000.0 / max(mean_rr, 1.0)
 
+        # Quality scalars (P2)
+        artifact_rate = self._artifact_rate(rr_long)
+        mean_sqi = max(0.0, min(1.0, 1.0 - artifact_rate))
+        hr_drift_bpm = self._hr_drift(rr_long)
+
         return HRVMetrics(
             rmssd=rmssd,
             sdnn=sdnn,
@@ -95,6 +104,9 @@ class HRVProcessor:
             mean_rr=mean_rr,
             hr=hr,
             n_rr=len(rr_long),
+            artifact_rate=artifact_rate,
+            mean_sqi=mean_sqi,
+            hr_drift_bpm=hr_drift_bpm,
         )
 
     @staticmethod
@@ -108,6 +120,37 @@ class HRVProcessor:
         if means.size < 2:
             return 0.0
         return float(np.std(means) / max(np.mean(rr), 1.0))
+
+    @staticmethod
+    def _artifact_rate(rr: np.ndarray) -> float:
+        """Fraction of successive RR diffs that exceed 20% of the local median.
+        Proxy for ectopic/motion artifact density.
+        """
+        if rr.size < 4:
+            return 0.0
+        median_rr = float(np.median(rr))
+        if median_rr == 0:
+            return 0.0
+        diffs = np.abs(np.diff(rr))
+        artifacts = np.sum(diffs > 0.20 * median_rr)
+        return float(artifacts) / max(len(diffs), 1)
+
+    @staticmethod
+    def _hr_drift(rr: np.ndarray) -> float:
+        """HR drift (bpm) = max(HR over 10-RR windows) − min(HR over 10-RR windows).
+        Captures non-stationarity; high drift may indicate posture change or artefact.
+        """
+        if rr.size < 10:
+            return 0.0
+        win = 10
+        hr_means = []
+        for i in range(0, rr.size - win + 1, 5):
+            mean_rr_w = float(np.mean(rr[i:i + win]))
+            if mean_rr_w > 0:
+                hr_means.append(60_000.0 / mean_rr_w)
+        if len(hr_means) < 2:
+            return 0.0
+        return float(max(hr_means) - min(hr_means))
 
     @staticmethod
     def _dfa_alpha1(rr: np.ndarray) -> float:
