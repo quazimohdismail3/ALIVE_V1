@@ -90,3 +90,88 @@ def test_put_profile_optional_fields_omitted():
     body = r.json()
     assert body["weight_kg"] is None
     assert body["resting_hr"] is None
+
+
+# ---------------------------------------------------------------------------
+# Task 5: RLS isolation — two real auth users via Supabase admin API
+# ---------------------------------------------------------------------------
+import asyncpg
+import httpx
+
+
+@pytest.mark.asyncio
+@pytest.mark.skipif(
+    not os.environ.get("SUPABASE_SERVICE_ROLE_KEY"),
+    reason="needs SUPABASE_SERVICE_ROLE_KEY to mint test JWTs",
+)
+async def test_rls_blocks_cross_user_profile_read():
+    """Two real auth users; user A writes profile; user B's JWT-scoped
+    connection cannot read it."""
+    sb_url = os.environ["SUPABASE_URL"]
+    service_key = os.environ["SUPABASE_SERVICE_ROLE_KEY"]
+
+    async with httpx.AsyncClient(headers={
+        "apikey": service_key,
+        "Authorization": f"Bearer {service_key}",
+        "Content-Type": "application/json",
+    }) as http:
+        a = await http.post(f"{sb_url}/auth/v1/admin/users", json={
+            "email": "rls-test-a@example.test",
+            "password": "rls-test-A-" + "password-9q3",
+            "email_confirm": True,
+        })
+        b = await http.post(f"{sb_url}/auth/v1/admin/users", json={
+            "email": "rls-test-b@example.test",
+            "password": "rls-test-B-" + "password-9q3",
+            "email_confirm": True,
+        })
+        assert a.status_code in (200, 422), a.text
+        assert b.status_code in (200, 422), b.text
+
+        sa = await http.post(f"{sb_url}/auth/v1/token?grant_type=password", json={
+            "email": "rls-test-a@example.test",
+            "password": "rls-test-A-" + "password-9q3",
+        })
+        sb_resp = await http.post(f"{sb_url}/auth/v1/token?grant_type=password", json={
+            "email": "rls-test-b@example.test",
+            "password": "rls-test-B-" + "password-9q3",
+        })
+        assert sa.status_code == 200, sa.text
+        assert sb_resp.status_code == 200, sb_resp.text
+        token_a = sa.json()["access_token"]
+        token_b = sb_resp.json()["access_token"]
+        user_a_id = sa.json()["user"]["id"]
+
+    await db.init_pool()
+    try:
+        async with db._pool.acquire() as conn:
+            await conn.execute(
+                "delete from public.user_profiles where user_id = $1",
+                uuid.UUID(user_a_id),
+            )
+        await db.upsert_profile(user_a_id, age=40, sex="male", height_cm=178)
+
+        async with httpx.AsyncClient(headers={
+            "apikey": os.environ["SUPABASE_ANON_KEY"],
+            "Authorization": f"Bearer {token_b}",
+        }) as http:
+            r = await http.get(
+                f"{sb_url}/rest/v1/user_profiles",
+                params={"user_id": f"eq.{user_a_id}", "select": "age"},
+            )
+        assert r.status_code == 200
+        body = r.json()
+        assert body == [], f"RLS leak: user B read user A's profile: {body}"
+
+        async with httpx.AsyncClient(headers={
+            "apikey": os.environ["SUPABASE_ANON_KEY"],
+            "Authorization": f"Bearer {token_a}",
+        }) as http:
+            r2 = await http.get(
+                f"{sb_url}/rest/v1/user_profiles",
+                params={"user_id": f"eq.{user_a_id}", "select": "age"},
+            )
+        assert r2.status_code == 200
+        assert r2.json() == [{"age": 40}]
+    finally:
+        await db.close_pool()
