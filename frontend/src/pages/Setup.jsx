@@ -25,7 +25,22 @@ export default function Setup({ cfg, onReady, onBack }) {
   useEffect(() => {
     if (!needsCamera) return;
     let cancelled = false;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, frameRate: { ideal: 30 } }, audio: false })
+    // Prefer EXACT rear camera so torch capability is reachable.
+    // Fall back to ideal if device exposes only one facingMode label.
+    const tryGet = async () => {
+      try {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { exact: 'environment' }, frameRate: { ideal: 30 } },
+          audio: false,
+        });
+      } catch (_) {
+        return await navigator.mediaDevices.getUserMedia({
+          video: { facingMode: { ideal: 'environment' }, frameRate: { ideal: 30 } },
+          audio: false,
+        });
+      }
+    };
+    tryGet()
       .then(stream => {
         if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;

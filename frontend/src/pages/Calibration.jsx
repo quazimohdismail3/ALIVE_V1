@@ -27,6 +27,7 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
   const fusionRef = useRef(null);
   const sendIvRef = useRef(null);
   const startedRef = useRef(false);
+  const gotCalFrameRef = useRef(false);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -61,30 +62,47 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
       wsRef.current = ws;
       ws.connect();
 
-      // Wait for WS open then send cal_start
-      const openWait = setInterval(() => {
-        if (ws.ws?.readyState === WebSocket.OPEN) {
+      // Bind directly to WebSocket lifecycle — no polling.
+      const bindLifecycle = () => {
+        if (!ws.ws) { setTimeout(bindLifecycle, 20); return; }
+        ws.ws.addEventListener('open', () => {
+          // ws_client.onopen sends auth first; we follow with cal_start in the same task.
           ws.send({ type: 'cal_start' });
-          clearInterval(openWait);
           setStatus('sweeping');
 
-          // Start streaming RR + resp_amp
+          // Stream RR + resp_amp; always send a heartbeat so backend / connection is exercised.
           sendIvRef.current = setInterval(() => {
-            const r = fusion.getReading();
-            if (!r) return;
+            const r = fusion.getReading?.();
+            if (!r) { ws.send({ resp_amp: 0 }); return; }
             const rrs = Array.isArray(r.rr?.rr_ms) ? r.rr.rr_ms.slice(-5) : [];
-            rrs.forEach(rr => ws.send({ rr, resp_amp: r.resp_amp ?? 0 }));
-            if (rrs.length === 0 && (r.resp_amp ?? 0) > 0) {
-              ws.send({ resp_amp: r.resp_amp });
+            if (rrs.length > 0) {
+              rrs.forEach(rr => ws.send({ rr, resp_amp: r.resp_amp ?? 0 }));
+            } else {
+              ws.send({ resp_amp: r.resp_amp ?? 0 });
             }
           }, 500);
-        }
-      }, 50);
+        });
+
+        ws.ws.addEventListener('error', (e) => {
+          console.warn('[Calibration] WS error:', e);
+          if (!gotCalFrameRef.current) setStatus('error');
+        });
+
+        ws.ws.addEventListener('close', (e) => {
+          console.warn('[Calibration] WS closed code=', e.code, 'reason=', e.reason);
+          if (!gotCalFrameRef.current && status !== 'locked' && status !== 'timeout') {
+            setStatus('error');
+          }
+          clearInterval(sendIvRef.current);
+        });
+      };
+      bindLifecycle();
     }
 
     function handleMsg(msg) {
       if (msg.type === 'auth_ok') return;
       if (msg.cal === true) {
+        gotCalFrameRef.current = true;
         if (typeof msg.target_bpm === 'number') setTargetBpm(msg.target_bpm);
         if (typeof msg.coherence_so_far === 'number') setCoherence(msg.coherence_so_far);
         if (typeof msg.dwell_remaining === 'number') setDwellRem(Math.round(msg.dwell_remaining));

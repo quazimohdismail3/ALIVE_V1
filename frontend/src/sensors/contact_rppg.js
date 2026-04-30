@@ -29,23 +29,43 @@ export class ContactRPPGSensor {
             const video = document.createElement('video');
             video.srcObject = this.stream;
             video.setAttribute('playsinline', true);
+            video.muted = true;
             await video.play();
+            // Wait for actual frame size before reading track capabilities — Android Chrome
+            // returns empty caps until the track produces a frame.
+            if (!video.videoWidth) {
+                await new Promise((res) => {
+                    const t = setTimeout(res, 1500);
+                    video.addEventListener('loadedmetadata', () => { clearTimeout(t); res(); }, { once: true });
+                });
+            }
             const canvas = document.createElement('canvas');
             canvas.width = this._roiSize;
             canvas.height = this._roiSize;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const track = this.stream.getVideoTracks()[0];
             this.torchAvailable = false;
-            try {
-                const caps = track.getCapabilities ? track.getCapabilities() : {};
-                if (caps.torch) {
-                    await track.applyConstraints({ advanced: [{ torch: true }] });
-                    this.torchAvailable = true;
-                    console.log('[rPPG] torch enabled');
-                } else {
-                    console.warn('[rPPG] torch capability not available on this track', caps);
+            // Two-pass torch attempt: caps may populate slowly on Android.
+            for (let attempt = 0; attempt < 2 && !this.torchAvailable; attempt++) {
+                try {
+                    const caps = track.getCapabilities ? track.getCapabilities() : {};
+                    if (caps.torch) {
+                        try {
+                            await track.applyConstraints({ advanced: [{ torch: true }] });
+                        } catch (_) {
+                            // Some Android builds reject 'advanced' wrapper — try plain form.
+                            await track.applyConstraints({ torch: true });
+                        }
+                        this.torchAvailable = true;
+                        console.log('[rPPG] torch enabled');
+                        break;
+                    }
+                    console.warn('[rPPG] torch capability not present yet (attempt', attempt + 1, ')', caps);
+                } catch (e) {
+                    console.warn('[rPPG] torch attempt', attempt + 1, 'failed:', e);
                 }
-            } catch (e) { console.warn('[rPPG] torch applyConstraints failed:', e); }
+                if (!this.torchAvailable) await new Promise(r => setTimeout(r, 400));
+            }
             this.running = true;
             const self = this;
             function loop() {
