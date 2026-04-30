@@ -1,5 +1,6 @@
 from __future__ import annotations
 import os
+import uuid
 from datetime import datetime, timezone
 from typing import Any, Optional
 import asyncpg
@@ -123,4 +124,61 @@ async def finish_session(session_id: Any, outcome: dict) -> None:
             outcome.get("rr_rejected"),
             outcome.get("sqi_mean"),
             outcome.get("discarded", False),
+        )
+
+
+from dataclasses import dataclass
+from decimal import Decimal
+
+
+@dataclass
+class Profile:
+    user_id: str
+    age: int
+    sex: str
+    height_cm: int
+    weight_kg: Optional[Decimal]
+    resting_hr: Optional[int]
+
+
+async def get_profile(user_id: str) -> Optional[Profile]:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            """
+            select user_id::text, age, sex, height_cm, weight_kg, resting_hr
+            from public.user_profiles
+            where user_id = $1
+            """,
+            uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+        )
+    if row is None:
+        return None
+    return Profile(**dict(row))
+
+
+async def upsert_profile(
+    user_id: str,
+    *,
+    age: int,
+    sex: str,
+    height_cm: int,
+    weight_kg: Optional[float] = None,
+    resting_hr: Optional[int] = None,
+) -> None:
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """
+            insert into public.user_profiles
+              (user_id, age, sex, height_cm, weight_kg, resting_hr, updated_at)
+            values ($1, $2, $3, $4, $5, $6, now())
+            on conflict (user_id) do update set
+              age        = excluded.age,
+              sex        = excluded.sex,
+              height_cm  = excluded.height_cm,
+              weight_kg  = excluded.weight_kg,
+              resting_hr = excluded.resting_hr,
+              updated_at = now()
+            """,
+            uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+            age, sex, height_cm, weight_kg, resting_hr,
         )

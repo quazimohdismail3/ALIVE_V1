@@ -56,6 +56,9 @@ if _SENTRY_DSN:
 
 app = FastAPI(title="Mission Alive API", version="1.0.0")
 
+from backend.api.profile import router as profile_router
+app.include_router(profile_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

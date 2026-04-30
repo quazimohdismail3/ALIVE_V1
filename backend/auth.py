@@ -1,6 +1,7 @@
 import os
 import jwt as pyjwt
 from jwt.exceptions import ExpiredSignatureError, InvalidTokenError
+from fastapi import HTTPException, Request
 
 
 class AuthError(Exception):
@@ -23,3 +24,18 @@ def validate_token(token: str) -> dict:
     if not payload.get("sub"):
         raise AuthError("missing sub")
     return payload
+
+
+def get_current_user(request: Request) -> str:
+    """FastAPI dependency — extracts Supabase JWT from Authorization: Bearer header,
+    validates it, returns the user UUID (sub claim). Raises 401 on any failure.
+    """
+    header = request.headers.get("Authorization", "")
+    if not header.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="missing or malformed bearer token")
+    token = header[len("Bearer "):]
+    try:
+        payload = validate_token(token)
+    except AuthError as e:
+        raise HTTPException(status_code=401, detail=str(e))
+    return payload["sub"]

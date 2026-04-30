@@ -82,11 +82,11 @@ Touch only what you must. Don't improve adjacent code, don't refactor unbroken t
 |------------------------|-----------------------------------------|
 | Current version        | V1.0 ✅                                 |
 | Real Polar H10 tested  | done                         |                           |
-| Auth / Postgres        | ❌ SQLite, no auth                      |
+| Auth / Postgres        | ✅ Supabase + auth + profile            |
 | Deployed               | ❌ Local only                           |
 | Active users           | 0 (simulator)                           |
 | Launch clearance       | ❌ Do not launch                        |
-| Last updated           | 2026-04-08                              |
+| Last updated           | 2026-04-30                              |
 
 ---
 
@@ -236,6 +236,7 @@ Is this handler for an impossible scenario?
 ```
 [YYYY-MM-DD] <what changed> — reason: <why>
 Example: [2026-04-08] V2.1 done, real H10 tested — reason: RMSSD avg 38ms vs 65ms sim
+[2026-04-30] P1 shipped — Supabase user_profiles + RLS + ProfileSetup wizard live; reason: unblocks per-user baseline math (P2)
 ```
 
 Also update LIVE STATE TABLE with ✅/❌ and today's date.

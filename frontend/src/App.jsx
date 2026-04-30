@@ -1,7 +1,9 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
+import ProfileSetup from './pages/ProfileSetup.jsx'
+import { getProfile } from './lib/api.js'
 import Landing from './pages/Landing.jsx'
 import Setup from './pages/Setup.jsx'
 import Calibration from './pages/Calibration.jsx'
@@ -17,6 +19,22 @@ function AppRoutes() {
   const [screen, setScreen]       = useState('landing')
   const [cfg, setCfg]             = useState(null)
   const [insightData, setInsightData] = useState(null)
+  const [profile, setProfile]     = useState(undefined)  // undefined=loading, null=missing, obj=present
+
+  useEffect(() => {
+    if (!user) { setProfile(undefined); return }
+    let cancelled = false
+    ;(async () => {
+      try {
+        const p = await getProfile()
+        if (!cancelled) setProfile(p)
+      } catch (e) {
+        console.error('profile fetch failed', e)
+        if (!cancelled) setProfile(null)
+      }
+    })()
+    return () => { cancelled = true }
+  }, [user])
 
   if (loading) {
     return (
@@ -27,6 +45,26 @@ function AppRoutes() {
   }
 
   if (!user) return <LoginScreen />
+
+  if (profile === undefined) {
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
+        <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #7C6FF7', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
+
+  if (profile === null) {
+    return (
+      <ProfileSetup
+        onComplete={async () => {
+          const p = await getProfile()
+          setProfile(p)
+          setScreen('landing')
+        }}
+      />
+    )
+  }
 
   switch (screen) {
     case 'setup':
