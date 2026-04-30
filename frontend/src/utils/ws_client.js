@@ -3,12 +3,13 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
 
 export class WSClient {
-  constructor(session, mode, authToken, onMessage, { timezone } = {}) {
+  constructor(session, mode, authToken, onMessage, { timezone, noReconnect } = {}) {
     this.session = session
     this.mode = mode
     this.authToken = authToken
     this.onMessage = onMessage
     this.timezone = timezone || 'UTC'
+    this.noReconnect = !!noReconnect
     this.ws = null
     this._reconnectDelay = 1000
     this._closed = false
@@ -33,10 +34,9 @@ export class WSClient {
     }
 
     this.ws.onclose = () => {
-      if (!this._closed) {
-        setTimeout(() => this.connect(), this._reconnectDelay)
-        this._reconnectDelay = Math.min(this._reconnectDelay * 2, 10000)
-      }
+      if (this._closed || this.noReconnect) return
+      setTimeout(() => this.connect(), this._reconnectDelay)
+      this._reconnectDelay = Math.min(this._reconnectDelay * 2, 10000)
     }
   }
 

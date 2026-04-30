@@ -28,7 +28,15 @@ export class ContactRPPGSensor {
             canvas.height = this._roiSize;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const track = this.stream.getVideoTracks()[0];
-            try { await track.applyConstraints({ advanced: [{ torch: true }] }); } catch(_) {}
+            try {
+                const caps = track.getCapabilities ? track.getCapabilities() : {};
+                if (caps.torch) {
+                    await track.applyConstraints({ advanced: [{ torch: true }] });
+                    console.log('[rPPG] torch enabled');
+                } else {
+                    console.warn('[rPPG] torch capability not available on this track');
+                }
+            } catch (e) { console.warn('[rPPG] torch applyConstraints failed:', e); }
             this.running = true;
             const self = this;
             function loop() {

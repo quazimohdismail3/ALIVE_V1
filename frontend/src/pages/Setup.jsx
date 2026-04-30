@@ -37,6 +37,10 @@ export default function Setup({ cfg, onReady, onBack }) {
   }, [needsCamera]);
 
   async function proceedToStep2() {
+    // Release preview rear-cam BEFORE rPPG grabs it, otherwise torch applyConstraints fails silently.
+    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch (_) {}
+    streamRef.current = null;
+    if (previewRef.current) previewRef.current.srcObject = null;
     setStep(2);
     if (!needsBLE) {
       // No BLE — start sensors and go straight to session
@@ -63,7 +67,7 @@ export default function Setup({ cfg, onReady, onBack }) {
   }
 
   const sensorReady = sensorStatus === 'ready';
-  const canBegin = needsBLE ? (bleStatus === 'paired' && sensorReady) : sensorReady || !needsCamera;
+  const canBegin = needsBLE ? (bleStatus === 'paired' && sensorReady) : sensorReady;
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
@@ -187,17 +191,17 @@ export default function Setup({ cfg, onReady, onBack }) {
 
             <button
               onClick={beginSession}
-              disabled={!canBegin && needsBLE}
+              disabled={!canBegin}
               className="touch-target"
               style={{
                 width: '100%', background: 'var(--primary)', color: '#fff',
                 border: 'none', borderRadius: 14, padding: 16,
                 fontWeight: 700, fontSize: 16, cursor: 'pointer',
-                opacity: (!canBegin && needsBLE) ? 0.4 : 1,
+                opacity: !canBegin ? 0.4 : 1,
                 transition: 'opacity 200ms',
               }}
             >
-              Begin Calibration
+              {sensorStatus === 'starting' ? 'Initialising sensors…' : 'Begin Calibration'}
             </button>
           </>
         )}

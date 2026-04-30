@@ -52,7 +52,7 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
         backendMode ?? 2,
         authToken,
         handleMsg,
-        { timezone }
+        { timezone, noReconnect: true }
       );
       wsRef.current = ws;
       ws.connect();
@@ -91,6 +91,9 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
         const locked = !!msg.rf_locked;
         setRfBpm(bpm);
         setStatus(locked ? 'locked' : 'timeout');
+        // Stop streaming and close WS immediately so it cannot reconnect during the 1.2s pause
+        clearInterval(sendIvRef.current);
+        try { wsRef.current?.close(); } catch (_) {}
         // Brief pause so user sees the lock event, then advance
         setTimeout(() => onLocked(bpm, locked), 1200);
       }
