@@ -8,12 +8,18 @@ const DOT = ({ ok }) => (
 );
 
 export function SensorStatusBar({ mode, sensorStatus, rfLocked, sqi }) {
+  // Mirrors SensorFusion.start():
+  //   mode 1 = rPPG + mic
+  //   mode 2 = H10 + mic
+  //   mode 3 = H10 + mic + face + pose (front-cam stack)
+  const ok = sensorStatus === 'ready';
   const sensors = [];
-  if (mode === 1) sensors.push({ label: 'rPPG', ok: sensorStatus === 'ready' });
-  if (mode === 2 || mode === 3) sensors.push({ label: 'H10', ok: sensorStatus === 'ready' });
-  if (mode !== 2) {
-    sensors.push({ label: 'Face', ok: sensorStatus === 'ready' });
-    sensors.push({ label: 'Pose', ok: sensorStatus === 'ready' });
+  if (mode === 1) sensors.push({ label: 'rPPG', ok });
+  if (mode === 2 || mode === 3) sensors.push({ label: 'H10', ok });
+  sensors.push({ label: 'Mic', ok });
+  if (mode === 3) {
+    sensors.push({ label: 'Face', ok });
+    sensors.push({ label: 'Pose', ok });
   }
 
   return (

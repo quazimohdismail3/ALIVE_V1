@@ -41,11 +41,15 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
       }
       if (cancelled) return;
 
-      const fusion = existingFusion ?? new SensorFusion(sensorMode ?? 1);
-      fusionRef.current = fusion;
+      // Setup must hand off a started fusion via cfg.fusion. Creating a second
+      // fusion here would re-grab the rear camera stream and break torch + RR.
       if (!existingFusion) {
-        try { await fusion.start(); } catch (_) { /* non-fatal */ }
+        console.error('[Calibration] missing fusion handoff from Setup — aborting');
+        setStatus('error');
+        return;
       }
+      const fusion = existingFusion;
+      fusionRef.current = fusion;
 
       const ws = new WSClient(
         session ?? 'find_your_calm',

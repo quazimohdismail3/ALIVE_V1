@@ -84,6 +84,12 @@ export class BreathMicSensor {
     }
 
     getLatestReading() {
-        return this.latest || { breath_rate_bpm: 12, rf_compliance: 0.5, confidence: 0 };
+        // Return null when uninitialized so callers (and backend) cannot treat a
+        // silent mic failure as if it were a valid 12 bpm / 0.5 compliance signal.
+        return this.latest || null;
+    }
+
+    isReady() {
+        return this.running && this.latest != null;
     }
 }

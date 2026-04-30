@@ -47,14 +47,18 @@ const SESSIONS = [
   },
 ];
 
-// sensorMode: used by SensorFusion (1=rPPG+sensors, 2=H10 only, 3=H10+sensors)
-// backendMode: sent to backend WS (1=simulator[unused], 2=real sensor, 3=real+polar)
+// Unified mode scheme — matches backend/rf_calibration.py MODE_CALIBRATION_CONFIG
+//   1 = Phone Only (rPPG fingertip + mic)
+//   2 = Polar H10 Only (ECG-grade RR + accel respiration)
+//   3 = Combined (H10 + face + pose + mic)
+// sensorMode and backendMode are intentionally identical so backend can pick the
+// correct calibration profile and VS-component weights per signal source.
 const MODES = [
   {
     sensorMode: 1,
-    backendMode: 2,
+    backendMode: 1,
     label: 'Phone Only',
-    desc: 'Rear camera rPPG + face + pose + mic. No hardware needed.',
+    desc: 'Rear camera rPPG + mic. No hardware needed.',
     badge: 'Medium confidence',
   },
   {

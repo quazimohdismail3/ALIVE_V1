@@ -135,10 +135,12 @@ async def ws_session(
     session: str = Query("calm"),
     mode: int = Query(1),
     duration_s: float = Query(600.0),
+    sim: int = Query(0),
 ):
     """1Hz control loop. First message must be {"type":"auth","token":"<jwt>"}.
 
-    mode: 1=simulator, 2=phone, 3=polar_h10
+    mode: 1=phone (rPPG), 2=polar_h10, 3=combined (matches MODE_CALIBRATION_CONFIG).
+    sim: pass ?sim=1 to drive HRV from the synthetic simulator instead of the WS.
     """
     await websocket.accept()
 
@@ -177,8 +179,14 @@ async def ws_session(
     except asyncio.TimeoutError:
         pass
 
-    # Map mode int → simulator string for HRVSimulator (1=simulator, 2/3=real sensor)
-    mode_str = "simulator" if mode == 1 else "polar"
+    # Source tag for db.write_rr — distinguishes rPPG from H10 in stored data.
+    # "simulator" only when explicit ?sim=1; never derive from mode number.
+    if sim:
+        mode_str = "simulator"
+    elif mode == 1:
+        mode_str = "rppg"
+    else:
+        mode_str = "polar"
     session_profile = session if session in PROFILES else "calm"
 
     # Create session row in Postgres (falls back gracefully if DB not configured)
@@ -191,7 +199,7 @@ async def ws_session(
             device_label=auth_msg.get("device_label"),
         )
 
-    sim = HRVSimulator(session_profile) if mode == 1 else None
+    sim_engine = HRVSimulator(session_profile) if sim else None
     flt = ArtifactFilter()
     proc = HRVProcessor()
     est = StateEstimator()
@@ -218,7 +226,9 @@ async def ws_session(
     rf_locked = False
     rf_bpm = rf_optimizer.f0
     rf_coherence = 0.0
-    current_mode = 2  # default Mode 2 (H10); updated from session start message if available
+    # current_mode is the calibration / VS-weighting mode (1=phone, 2=H10, 3=combined),
+    # taken from the WS query param. Falls back to 2 (H10) if a stray value sneaks in.
+    current_mode = mode if mode in MODE_CALIBRATION_CONFIG else 2
     _rf_config = MODE_CALIBRATION_CONFIG[current_mode]
     session_manager = SessionManager(session_type=session_profile, mode=current_mode)
     circadian_ctx = get_circadian_context(client_tz)
@@ -342,10 +352,10 @@ async def ws_session(
 
             # --- RR acquisition: ~1s of beats
             rrs: list[float] = []
-            if sim is not None:
+            if sim_engine is not None:
                 t_target = cycle_t0 + 1.0
                 while time.time() < t_target:
-                    rr = sim.next_rr()
+                    rr = sim_engine.next_rr()
                     rrs.append(rr)
                     await asyncio.sleep(rr / 1000.0)
             else:
@@ -403,11 +413,19 @@ async def ws_session(
 
             metrics = proc.compute()
             if metrics is None:
-                await websocket.send_json({"status": "buffering", "n_rr": len(proc.buf)})
+                await websocket.send_json({
+                    "t": elapsed,
+                    "status": "buffering",
+                    "n_rr": len(proc.buf),
+                })
                 continue
 
             if sqi is not None and sqi < flt.sqi_threshold:
-                await websocket.send_json({"status": "low_sqi", "sqi": round(sqi, 3)})
+                await websocket.send_json({
+                    "t": elapsed,
+                    "status": "low_sqi",
+                    "sqi": round(sqi, 3),
+                })
                 continue
 
             # --- State estimation

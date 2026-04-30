@@ -52,6 +52,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const [wsStatus, setWsStatus]     = useState('connecting');
   const [showDiscard, setShowDiscard] = useState(false);
   const [elapsed, setElapsed]       = useState(0);
+  const [lastStatus, setLastStatus] = useState(null); // {status, n_rr, t} from backend buffering / low_sqi
+  const [sensorReady, setSensorReady] = useState(false);
 
   const wsRef       = useRef(null);
   const fusionRef   = useRef(null);
@@ -110,11 +112,12 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       }, 50);
       wsRef.current = ws;
 
-      // Reuse fusion from Setup (already has sensors started + BLE paired).
-      // Only create a new one if cfg.fusion is absent (e.g., direct navigation).
+      // Setup must hand off a started fusion. If absent (direct nav / refresh)
+      // we still create one, but flag sensorReady=false until a real reading arrives.
       const fusion = cfg?.fusion ?? new SensorFusion(sensorMode ?? 1);
       fusionRef.current = fusion;
       if (!cfg?.fusion) fusion.start().catch(() => {});
+      setSensorReady(!!cfg?.fusion);
 
       // Audio
       const audio = new SessionAudio(session);
@@ -135,6 +138,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       sendIvRef.current = setInterval(() => {
         const reading = fusion.getReading();
         if (!reading) return;
+        if (!sensorReady) setSensorReady(true);
         const rrs = Array.isArray(reading.rr?.rr_ms) ? reading.rr.rr_ms.slice(-5) : [];
         rrs.forEach(rr => ws.send({ rr, resp_amp: reading.resp_amp ?? 0 }));
         // Also send a respiration-only frame if no RR available, so backend coherence has data
@@ -161,11 +165,13 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       return;
     }
     if (msg.status) {
-      // buffering / low_sqi — not a data frame
+      // buffering / low_sqi — surface to UI so user can see RR are flowing
+      setLastStatus(msg);
       return;
     }
     if ('t' in msg) {
       setFrame(msg);
+      setLastStatus(null);
       accumPush(msg);
 
       // Wire audio updates every frame
@@ -202,7 +208,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     const summary = summarize();
     if (summary) {
       summary.session_type = session;
-      summary.mode = backendMode ?? 2;
+      summary.mode = backendMode ?? sensorMode ?? 1;
       await postSessionEnd(summary);
     }
     onEnd(summary);
@@ -275,7 +281,13 @@ export default function Session({ cfg, onEnd, onDiscard }) {
             <AnsState state={frame.ans.state} confidence={frame.ans.confidence} actionable={frame.ans.actionable} />
           ) : (
             <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-              {wsStatus === 'connecting' ? 'Connecting…' : 'Buffering HRV data…'}
+              {wsStatus === 'connecting'
+                ? 'Connecting…'
+                : lastStatus?.status === 'low_sqi'
+                  ? `Low signal quality — keep finger still (SQI ${(lastStatus.sqi * 100).toFixed(0)}%)`
+                  : lastStatus?.status === 'buffering'
+                    ? `Buffering HRV — ${lastStatus.n_rr ?? 0} RR collected, need ~30`
+                    : 'Buffering HRV data…'}
             </div>
           )}
         </div>
@@ -303,7 +315,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           </div>
           <div className="v2-card">
             <div style={{ color: 'var(--text-dim)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Sensors</div>
-            <SensorStatusBar mode={sensorMode} sensorStatus="ready" rfLocked={frame?.rf_locked} />
+            <SensorStatusBar mode={sensorMode} sensorStatus={sensorReady ? 'ready' : 'starting'} rfLocked={frame?.rf_locked} />
           </div>
         </div>
 
