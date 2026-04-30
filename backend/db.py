@@ -182,3 +182,86 @@ async def upsert_profile(
             uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
             age, sex, height_cm, weight_kg, resting_hr,
         )
+
+
+# ---------------------------------------------------------------------------
+# Baseline helpers (P2)
+# ---------------------------------------------------------------------------
+
+async def get_baseline(user_id: str) -> dict | None:
+    async with _pool.acquire() as conn:
+        row = await conn.fetchrow(
+            "SELECT * FROM user_baselines WHERE user_id = $1", user_id
+        )
+        return dict(row) if row else None
+
+
+async def upsert_baseline(user_id: str, data: dict) -> None:
+    async with _pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO user_baselines
+              (user_id, rmssd_mean, rmssd_sd, rmssd_min, rmssd_max,
+               source, n_sessions_used, posterior_precision, updated_at)
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8, now())
+            ON CONFLICT (user_id) DO UPDATE SET
+              rmssd_mean=EXCLUDED.rmssd_mean,
+              rmssd_sd=EXCLUDED.rmssd_sd,
+              rmssd_min=EXCLUDED.rmssd_min,
+              rmssd_max=EXCLUDED.rmssd_max,
+              source=EXCLUDED.source,
+              n_sessions_used=EXCLUDED.n_sessions_used,
+              posterior_precision=EXCLUDED.posterior_precision,
+              updated_at=now()
+        """,
+            user_id, data["rmssd_mean"], data["rmssd_sd"],
+            data["rmssd_min"], data["rmssd_max"],
+            data["source"], data["n_sessions_used"],
+            data["posterior_precision"],
+        )
+
+
+async def get_eligible_sessions(user_id: str, window_days: int = 14) -> list[dict]:
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch("""
+            SELECT rmssd_median, baseline_weight, sensor_mode, rr_count,
+                   artifact_rate, mean_sqi, hr_drift_bpm
+            FROM sessions
+            WHERE user_id = $1
+              AND baseline_eligible = true
+              AND discarded = false
+              AND started_at >= now() - ($2 || ' days')::interval
+            ORDER BY started_at DESC
+        """, user_id, str(window_days))
+        return [dict(r) for r in rows]
+
+
+async def create_session_row(user_id: str, data: dict) -> str:
+    """Insert a session row. Returns session_id."""
+    session_id = str(uuid.uuid4())
+    async with _pool.acquire() as conn:
+        await conn.execute("""
+            INSERT INTO sessions (
+              session_id, user_id, session_type, sensor_mode,
+              started_at, ended_at, duration_s,
+              rmssd_median, hr_mean, rr_count,
+              artifact_rate, mean_sqi, hr_drift_bpm,
+              baseline_eligible, baseline_excluded_reason, baseline_weight
+            ) VALUES (
+              $1,$2,$3,$4,
+              now(), now(), $5,
+              $6,$7,$8,
+              $9,$10,$11,
+              $12,$13,$14
+            )
+        """,
+            session_id, user_id,
+            data.get("session_type", "calibration"), data.get("sensor_mode", 2),
+            data.get("duration_s", 0),
+            data.get("rmssd_median"), data.get("hr_mean"), data.get("rr_count", 0),
+            data.get("artifact_rate", 0.0), data.get("mean_sqi", 0.0),
+            data.get("hr_drift_bpm", 0.0),
+            data.get("baseline_eligible", False),
+            data.get("baseline_excluded_reason"),
+            data.get("baseline_weight", 0.0),
+        )
+    return session_id

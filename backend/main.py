@@ -59,6 +59,9 @@ app = FastAPI(title="Mission Alive API", version="1.0.0")
 from backend.api.profile import router as profile_router
 app.include_router(profile_router)
 
+from backend.api.baseline import router as baseline_router
+app.include_router(baseline_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -317,12 +320,76 @@ async def ws_session(
             rf_bpm = best_bpm
             rf_coherence = best_coh
 
+        # Harvest final HRV snapshot for baseline quality check
+        cal_metrics = proc.compute()
+        cal_duration_s = round(time.time() - cal_start_t, 1)
+        if cal_metrics is not None:
+            cal_hrv = {
+                "sensor_mode": current_mode,
+                "rmssd_median": round(cal_metrics.rmssd, 2),
+                "hr_mean": round(cal_metrics.hr, 1),
+                "rr_count": cal_metrics.n_rr,
+                "artifact_rate": round(cal_metrics.artifact_rate, 4),
+                "mean_sqi": round(cal_metrics.mean_sqi, 4),
+                "hr_drift_bpm": round(cal_metrics.hr_drift_bpm, 2),
+                "duration_s": cal_duration_s,
+            }
+        else:
+            cal_hrv = {
+                "sensor_mode": current_mode,
+                "rmssd_median": None,
+                "hr_mean": None,
+                "rr_count": len(_rr_buffer),
+                "artifact_rate": 1.0,
+                "mean_sqi": 0.0,
+                "hr_drift_bpm": 0.0,
+                "duration_s": cal_duration_s,
+            }
+
+        from .baseline_engine import quality_check, recompute_baseline_from_sessions
+        baseline_eligible = False
+        try:
+            ok, _reason, weight = quality_check(cal_hrv, is_calibration=True)
+            if ok and os.environ.get("DATABASE_URL"):
+                cal_hrv["baseline_weight"] = round(weight, 4)
+                cal_hrv["baseline_eligible"] = True
+                await db.create_session_row(user_id, {
+                    **cal_hrv,
+                    "session_type": "calibration",
+                    "baseline_excluded_reason": None,
+                })
+                profile_obj = await db.get_profile(user_id)
+                if profile_obj is not None:
+                    eligible_sessions = await db.get_eligible_sessions(user_id)
+                    profile_dict = {
+                        "age": profile_obj.age,
+                        "sex": profile_obj.sex,
+                        "height_cm": profile_obj.height_cm,
+                        "weight_kg": float(profile_obj.weight_kg) if profile_obj.weight_kg is not None else None,
+                        "resting_hr": profile_obj.resting_hr,
+                    }
+                    new_baseline = recompute_baseline_from_sessions(profile_dict, eligible_sessions)
+                    await db.upsert_baseline(user_id, {
+                        "rmssd_mean": new_baseline.rmssd_mean,
+                        "rmssd_sd": new_baseline.rmssd_sd,
+                        "rmssd_min": new_baseline.rmssd_min,
+                        "rmssd_max": new_baseline.rmssd_max,
+                        "source": new_baseline.source,
+                        "n_sessions_used": new_baseline.n_sessions_used,
+                        "posterior_precision": new_baseline.posterior_precision,
+                    })
+                    baseline_eligible = True
+        except Exception:
+            pass  # DB failure must not block cal_done delivery
+
         try:
             await websocket.send_json({
                 "cal_done": True,
                 "rf_bpm": round(float(rf_bpm), 2),
                 "rf_locked": bool(rf_locked),
                 "rf_coherence": round(float(rf_coherence), 3),
+                "cal_hrv": cal_hrv,
+                "baseline_eligible": baseline_eligible,
             })
         except Exception:
             pass

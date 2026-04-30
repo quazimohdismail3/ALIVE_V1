@@ -6,6 +6,12 @@ import { SensorFusion } from '../sensors/sensor_fusion.js';
 /**
  * Calibration — adaptive RF sweep with paced breathing guide.
  *
+ * Psyche §3.5 additions (P2):
+ *  - HR value displayed inside BreathingOrb; pulses on each HR update
+ *  - Faded HRV panel shown only after n_rr >= 30 (RMSSD, HR, artifact rate)
+ *  - One-time hint "The tone is following your breath" after first valid HRV
+ *  - cal_hrv end display: final RMSSD + baseline update status
+ *
  * Flow:
  *  1. Open WS, send {type:"cal_start"}
  *  2. Stream RR + resp_amp every 500ms while backend sweeps target frequencies
@@ -16,18 +22,29 @@ import { SensorFusion } from '../sensors/sensor_fusion.js';
 export default function Calibration({ cfg, onLocked, onSkip }) {
   const { session, backendMode, timezone, fusion: existingFusion, sensorMode } = cfg ?? {};
 
-  const [targetBpm, setTargetBpm]       = useState(5.5);
-  const [coherence, setCoherence]       = useState(0);
-  const [dwellRem, setDwellRem]         = useState(30);
-  const [elapsed, setElapsed]           = useState(0);
-  const [status, setStatus]             = useState('connecting'); // connecting | sweeping | locked | timeout | error
-  const [rfBpm, setRfBpm]               = useState(null);
+  const [targetBpm, setTargetBpm]         = useState(5.5);
+  const [coherence, setCoherence]         = useState(0);
+  const [dwellRem, setDwellRem]           = useState(30);
+  const [elapsed, setElapsed]             = useState(0);
+  const [status, setStatus]               = useState('connecting');
+  const [rfBpm, setRfBpm]                 = useState(null);
+  // P2: HRV quality scalars
+  const [liveHr, setLiveHr]               = useState(null);
+  const [liveRmssd, setLiveRmssd]         = useState(null);
+  const [liveNRr, setLiveNRr]             = useState(0);
+  const [liveArtRate, setLiveArtRate]     = useState(null);
+  const [hrPulse, setHrPulse]             = useState(false);
+  const [showHint, setShowHint]           = useState(false);
+  const [calHrv, setCalHrv]               = useState(null);
+  const [baselineEligible, setBaselineEligible] = useState(null);
 
-  const wsRef     = useRef(null);
-  const fusionRef = useRef(null);
-  const sendIvRef = useRef(null);
-  const startedRef = useRef(false);
-  const gotCalFrameRef = useRef(false);
+  const wsRef            = useRef(null);
+  const fusionRef        = useRef(null);
+  const sendIvRef        = useRef(null);
+  const startedRef       = useRef(false);
+  const gotCalFrameRef   = useRef(false);
+  const prevHrRef        = useRef(null);
+  const hintShownRef     = useRef(false);
 
   useEffect(() => {
     if (startedRef.current) return;
@@ -62,7 +79,6 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
       wsRef.current = ws;
       ws.connect();
 
-      // Bind directly to WebSocket lifecycle — no polling.
       const bindLifecycle = () => {
         if (!ws.ws) { setTimeout(bindLifecycle, 20); return; }
         ws.ws.addEventListener('open', () => {
@@ -107,12 +123,38 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
         if (typeof msg.coherence_so_far === 'number') setCoherence(msg.coherence_so_far);
         if (typeof msg.dwell_remaining === 'number') setDwellRem(Math.round(msg.dwell_remaining));
         if (typeof msg.elapsed === 'number') setElapsed(msg.elapsed);
+
+        // P2: n_rr always in cal frame
+        if (typeof msg.n_rr === 'number') setLiveNRr(msg.n_rr);
+        // P2: HRV quality scalars in cal frame under hrv key
+        if (msg.hrv) {
+          const h = msg.hrv;
+          if (typeof h.hr === 'number') {
+            if (prevHrRef.current !== null && Math.abs(h.hr - prevHrRef.current) > 0.5) {
+              setHrPulse(true);
+              setTimeout(() => setHrPulse(false), 300);
+            }
+            prevHrRef.current = h.hr;
+            setLiveHr(h.hr);
+          }
+          if (typeof h.rmssd === 'number') setLiveRmssd(h.rmssd);
+          if (typeof h.artifact_rate === 'number') setLiveArtRate(h.artifact_rate);
+
+          // One-time hint after first valid HRV reading (n_rr >= 30)
+          if (!hintShownRef.current && msg.n_rr >= 30) {
+            hintShownRef.current = true;
+            setShowHint(true);
+            setTimeout(() => setShowHint(false), 4000);
+          }
+        }
       }
       if (msg.cal_done === true) {
         const bpm = msg.rf_bpm ?? 5.5;
         const locked = !!msg.rf_locked;
         setRfBpm(bpm);
         setStatus(locked ? 'locked' : 'timeout');
+        if (msg.cal_hrv) setCalHrv(msg.cal_hrv);
+        if (typeof msg.baseline_eligible === 'boolean') setBaselineEligible(msg.baseline_eligible);
         // Stop streaming and close WS immediately so it cannot reconnect during the 1.2s pause
         clearInterval(sendIvRef.current);
         try { wsRef.current?.close(); } catch (_) {}
@@ -138,6 +180,8 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
   const periodS = 60 / Math.max(targetBpm, 3.5);
   const inhaleS = (periodS * 0.6).toFixed(2);
   const exhaleS = (periodS * 0.4).toFixed(2);
+  const showHrvPanel = liveNRr >= 30;
+  const breatheDur = (parseFloat(inhaleS) + parseFloat(exhaleS)).toFixed(2);
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
@@ -146,6 +190,17 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
           0%   { transform: scale(0.7); opacity: 0.6; }
           60%  { transform: scale(1.15); opacity: 1; }
           100% { transform: scale(0.7); opacity: 0.6; }
+        }
+        @keyframes calHrPulse {
+          0%   { transform: scale(1.00); }
+          50%  { transform: scale(1.025); }
+          100% { transform: scale(1.00); }
+        }
+        @keyframes calHintFade {
+          0%   { opacity: 0; transform: translateY(4px); }
+          15%  { opacity: 1; transform: translateY(0); }
+          80%  { opacity: 1; }
+          100% { opacity: 0; }
         }
       `}</style>
 
@@ -163,14 +218,15 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
       </div>
 
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', padding: '0 20px' }}>
+        {/* BreathingOrb — P2: HR inside, pulse on HR update */}
         <div
           style={{
             width: 220, height: 220, borderRadius: '50%',
-            background: `radial-gradient(circle, rgba(124,111,247,0.35) 0%, transparent 70%)`,
-            border: `2px solid rgba(124,111,247,0.5)`,
+            background: 'radial-gradient(circle, rgba(124,111,247,0.35) 0%, transparent 70%)',
+            border: '2px solid rgba(124,111,247,0.5)',
             boxShadow: '0 0 60px rgba(124,111,247,0.25)',
-            animation: status === 'sweeping' || status === 'connecting'
-              ? `calBreathe ${(parseFloat(inhaleS) + parseFloat(exhaleS)).toFixed(2)}s ease-in-out infinite`
+            animation: (status === 'sweeping' || status === 'connecting')
+              ? `calBreathe ${breatheDur}s ease-in-out infinite`
               : 'none',
             display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           }}
@@ -181,7 +237,19 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
           <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
             breaths / min
           </div>
+          {liveHr !== null && (
+            <div style={{ marginTop: 10, animation: hrPulse ? 'calHrPulse 300ms ease-out' : 'none', fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>
+              <span style={{ fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>{Math.round(liveHr)}</span>
+              <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 3 }}>bpm</span>
+            </div>
+          )}
         </div>
+
+        {showHint && (
+          <div style={{ marginTop: 16, animation: 'calHintFade 4s ease forwards', color: 'rgba(124,111,247,0.9)', fontSize: 13, fontStyle: 'italic', textAlign: 'center' }}>
+            The tone is following your breath
+          </div>
+        )}
 
         <div style={{ marginTop: 32, textAlign: 'center', minHeight: 60 }}>
           {status === 'connecting' && (
@@ -198,14 +266,33 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
             </>
           )}
           {status === 'locked' && (
-            <div style={{ color: 'var(--locked, #00D084)', fontSize: 18, fontWeight: 700 }}>
-              Locked at {rfBpm?.toFixed(1)} bpm ✓
-            </div>
+            <>
+              <div style={{ color: 'var(--locked, #00D084)', fontSize: 18, fontWeight: 700 }}>
+                Locked at {rfBpm?.toFixed(1)} bpm ✓
+              </div>
+              {baselineEligible === true && (
+                <div style={{ color: 'var(--locked, #00D084)', fontSize: 13, marginTop: 6, opacity: 0.85 }}>
+                  Your baseline just updated
+                </div>
+              )}
+              {calHrv?.rmssd_median != null && (
+                <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 4 }}>
+                  RMSSD {Math.round(calHrv.rmssd_median)} ms
+                </div>
+              )}
+            </>
           )}
           {status === 'timeout' && (
-            <div style={{ color: 'var(--warn, #EF9F27)', fontSize: 14 }}>
-              Using best estimate {rfBpm?.toFixed(1)} bpm
-            </div>
+            <>
+              <div style={{ color: 'var(--warn, #EF9F27)', fontSize: 14 }}>
+                Using best estimate {rfBpm?.toFixed(1)} bpm
+              </div>
+              {calHrv?.rmssd_median != null && (
+                <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 4 }}>
+                  RMSSD {Math.round(calHrv.rmssd_median)} ms
+                </div>
+              )}
+            </>
           )}
           {status === 'error' && (
             <div style={{ color: 'var(--danger, #E24B4A)', fontSize: 14 }}>
@@ -213,9 +300,33 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
             </div>
           )}
         </div>
+
+        {/* P2: Faded HRV panel — appears only when n_rr >= 30 */}
+        {showHrvPanel && (
+          <div style={{ marginTop: 16, padding: '10px 18px', background: 'rgba(255,255,255,0.04)', borderRadius: 10, border: '1px solid rgba(255,255,255,0.07)', display: 'flex', gap: 20, opacity: 0.7 }}>
+            {liveRmssd !== null && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{Math.round(liveRmssd)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>RMSSD ms</div>
+              </div>
+            )}
+            {liveHr !== null && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{Math.round(liveHr)}</div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>HR bpm</div>
+              </div>
+            )}
+            {liveArtRate !== null && (
+              <div style={{ textAlign: 'center' }}>
+                <div style={{ fontSize: 15, fontWeight: 600, fontVariantNumeric: 'tabular-nums' }}>{(liveArtRate * 100).toFixed(0)}%</div>
+                <div style={{ fontSize: 10, color: 'var(--text-dim)', marginTop: 1 }}>artifact</div>
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
-      {/* Progress strip */}
+      {/* Progress strip — unchanged */}
       <div style={{ padding: '0 20px 32px', maxWidth: 480, margin: '0 auto', width: '100%', boxSizing: 'border-box' }}>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
           <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>Coherence</span>
