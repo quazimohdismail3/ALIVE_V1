@@ -14,8 +14,10 @@ export class SensorFusion {
         this.motionGate = new MotionGate();
     }
 
-    async start() {
+    async start({ externalRearStream = null } = {}) {
         this.motionGate.start();
+        // Track handed-off rear stream so we can release it on stop().
+        this._rearStream = externalRearStream;
         try {
             // BLE H10 — modes 2 and 3
             if (this.mode === 2 || this.mode === 3) {
@@ -25,7 +27,7 @@ export class SensorFusion {
             // Rear-cam fingertip rPPG — mode 1 only (rear cam + torch can't coexist with front cam)
             if (this.mode === 1) {
                 this.sensors.rppg = new ContactRPPGSensor();
-                await this.sensors.rppg.start();
+                await this.sensors.rppg.start(externalRearStream);
             }
             // Mic — all modes (resp signal for RF coherence)
             this.sensors.mic = new BreathMicSensor();
@@ -55,6 +57,14 @@ export class SensorFusion {
         // Stop the shared front-camera stream we created in combined mode
         try { if (this._frontStream) this._frontStream.getTracks().forEach(t => t.stop()); } catch(_) {}
         this._frontStream = null;
+        // Release the rear stream handed off from Setup (rPPG sensor doesn't own it)
+        try { if (this._rearStream) this._rearStream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        this._rearStream = null;
+    }
+
+    getTorchStatus() {
+        if (this.mode !== 1) return null;
+        return !!this.sensors.rppg?.torchAvailable;
     }
 
     getReading() {

@@ -24,27 +24,33 @@ export default function Setup({ cfg, onReady, onBack }) {
   // Step 1: request camera permission + preview
   useEffect(() => {
     if (!needsCamera) return;
-    navigator.mediaDevices?.getUserMedia({ video: { facingMode: 'environment' }, audio: false })
+    let cancelled = false;
+    navigator.mediaDevices?.getUserMedia({ video: { facingMode: { ideal: 'environment' }, frameRate: { ideal: 30 } }, audio: false })
       .then(stream => {
+        if (cancelled) { stream.getTracks().forEach(t => t.stop()); return; }
         streamRef.current = stream;
         if (previewRef.current) previewRef.current.srcObject = stream;
       })
-      .catch(() => {});
+      .catch((e) => { console.warn('[Setup] preview camera failed:', e); });
 
     return () => {
-      streamRef.current?.getTracks().forEach(t => t.stop());
+      cancelled = true;
+      // Only stop here if not handed to fusion; fusion takes ownership on Continue.
+      if (streamRef.current && !streamRef.current._handedOff) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+      }
     };
   }, [needsCamera]);
 
   async function proceedToStep2() {
-    // Release preview rear-cam BEFORE rPPG grabs it, otherwise torch applyConstraints fails silently.
-    try { streamRef.current?.getTracks().forEach(t => t.stop()); } catch (_) {}
-    streamRef.current = null;
+    // Detach preview <video> but KEEP the stream — pass it to ContactRPPGSensor so the
+    // SAME track is reused (re-acquiring rear cam right after release breaks torch on Android).
     if (previewRef.current) previewRef.current.srcObject = null;
+    const handoffStream = streamRef.current;
+    if (handoffStream) handoffStream._handedOff = true;
     setStep(2);
     if (!needsBLE) {
-      // No BLE — start sensors and go straight to session
-      await start(cfg.sensorMode);
+      await start(cfg.sensorMode, { externalRearStream: handoffStream });
       await acquire();
     }
   }
@@ -52,8 +58,9 @@ export default function Setup({ cfg, onReady, onBack }) {
   async function pairBLE() {
     setBleStatus('scanning');
     try {
-      // SensorFusion.start() handles BLE pairing internally
-      await start(cfg.sensorMode);
+      const handoffStream = streamRef.current;
+      if (handoffStream) handoffStream._handedOff = true;
+      await start(cfg.sensorMode, { externalRearStream: handoffStream });
       setBleStatus('paired');
       await acquire();
     } catch (e) {
@@ -68,6 +75,7 @@ export default function Setup({ cfg, onReady, onBack }) {
 
   const sensorReady = sensorStatus === 'ready';
   const canBegin = needsBLE ? (bleStatus === 'paired' && sensorReady) : sensorReady;
+  const torchStatus = sensorReady && cfg?.sensorMode === 1 ? getFusion()?.getTorchStatus?.() : null;
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', display: 'flex', flexDirection: 'column' }}>
@@ -186,6 +194,17 @@ export default function Setup({ cfg, onReady, onBack }) {
             {error && (
               <div style={{ background: 'rgba(226,75,74,0.12)', border: '1px solid rgba(226,75,74,0.3)', borderRadius: 12, padding: 14, marginBottom: 16, color: 'var(--danger)', fontSize: 14 }}>
                 {error}
+              </div>
+            )}
+
+            {torchStatus === false && (
+              <div style={{ background: 'rgba(239,159,39,0.12)', border: '1px solid rgba(239,159,39,0.3)', borderRadius: 12, padding: 14, marginBottom: 16, color: 'var(--warn, #EF9F27)', fontSize: 13, lineHeight: 1.5 }}>
+                Flashlight not available on this browser. Fingertip rPPG needs torch — use Chrome on Android, or pair a Polar H10 (Combined / H10 mode).
+              </div>
+            )}
+            {torchStatus === true && (
+              <div style={{ background: 'rgba(0,208,132,0.10)', border: '1px solid rgba(0,208,132,0.3)', borderRadius: 12, padding: 12, marginBottom: 16, color: 'var(--locked, #00D084)', fontSize: 13 }}>
+                Flashlight on — rest fingertip on rear lens.
               </div>
             )}
 

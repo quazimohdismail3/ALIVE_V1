@@ -14,11 +14,18 @@ export class ContactRPPGSensor {
         this._snr = 0;
     }
 
-    async start() {
+    async start(externalStream = null) {
         try {
-            this.stream = await navigator.mediaDevices.getUserMedia({
-                video: { facingMode: { exact: 'environment' }, frameRate: { ideal: 30 } }
-            });
+            // Reuse stream from preview (avoids release/re-acquire race that kills torch).
+            if (externalStream) {
+                this.stream = externalStream;
+                this._ownsStream = false;
+            } else {
+                this.stream = await navigator.mediaDevices.getUserMedia({
+                    video: { facingMode: { exact: 'environment' }, frameRate: { ideal: 30 } }
+                });
+                this._ownsStream = true;
+            }
             const video = document.createElement('video');
             video.srcObject = this.stream;
             video.setAttribute('playsinline', true);
@@ -28,13 +35,15 @@ export class ContactRPPGSensor {
             canvas.height = this._roiSize;
             const ctx = canvas.getContext('2d', { willReadFrequently: true });
             const track = this.stream.getVideoTracks()[0];
+            this.torchAvailable = false;
             try {
                 const caps = track.getCapabilities ? track.getCapabilities() : {};
                 if (caps.torch) {
                     await track.applyConstraints({ advanced: [{ torch: true }] });
+                    this.torchAvailable = true;
                     console.log('[rPPG] torch enabled');
                 } else {
-                    console.warn('[rPPG] torch capability not available on this track');
+                    console.warn('[rPPG] torch capability not available on this track', caps);
                 }
             } catch (e) { console.warn('[rPPG] torch applyConstraints failed:', e); }
             this.running = true;
@@ -69,7 +78,8 @@ export class ContactRPPGSensor {
 
     stop() {
         this.running = false;
-        try { if (this.stream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
+        // Only stop tracks we acquired ourselves; external streams are owned elsewhere.
+        try { if (this.stream && this._ownsStream) this.stream.getTracks().forEach(t => t.stop()); } catch(_) {}
     }
 
     _detectRR() {

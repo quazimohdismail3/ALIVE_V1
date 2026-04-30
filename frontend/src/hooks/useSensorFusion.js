@@ -15,12 +15,12 @@ export function useSensorFusion() {
   const [sensorStatus, setSensorStatus] = useState('idle');
   const [error, setError] = useState(null);
 
-  const start = useCallback(async (mode) => {
+  const start = useCallback(async (mode, opts = {}) => {
     setSensorStatus('starting');
     setError(null);
     try {
       const fusion = new SensorFusion(mode);
-      await fusion.start();
+      await fusion.start(opts);
       fusionRef.current = fusion;
       setSensorStatus('ready');
     } catch (e) {
