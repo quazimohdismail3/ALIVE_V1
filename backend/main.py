@@ -62,6 +62,9 @@ app.include_router(profile_router)
 from backend.api.baseline import router as baseline_router
 app.include_router(baseline_router)
 
+from backend.api.sessions import router as sessions_router
+app.include_router(sessions_router)
+
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

@@ -7,6 +7,7 @@ import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
 import { getProfile } from './lib/api.js'
 import Landing from './pages/Landing.jsx'
+import Dashboard from './pages/Dashboard.jsx'
 import Setup from './pages/Setup.jsx'
 import Calibration from './pages/Calibration.jsx'
 import Session from './pages/Session.jsx'
@@ -153,7 +154,7 @@ function AppRoutes() {
 
     default: // 'landing'
       return (
-        <Landing
+        <Dashboard
           onStart={(c) => { setCfg(c); setScreen('setup') }}
         />
       )

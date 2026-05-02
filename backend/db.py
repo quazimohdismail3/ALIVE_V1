@@ -293,6 +293,24 @@ async def create_session_row(user_id: str, data: dict) -> str:
     return session_id
 
 
+async def get_sessions(user_id: str, limit: int = 10) -> list[dict]:
+    """Recent completed sessions for the dashboard history card."""
+    async with _pool.acquire() as conn:
+        rows = await conn.fetch(
+            """
+            SELECT id, session_type, sensor_mode, started_at, ended_at,
+                   duration_s, rmssd_median, hr_mean, rr_count,
+                   artifact_rate, mean_sqi, baseline_eligible, discarded
+            FROM sessions
+            WHERE user_id = $1 AND discarded = false
+            ORDER BY started_at DESC
+            LIMIT $2
+            """,
+            user_id, limit,
+        )
+        return [dict(r) for r in rows]
+
+
 async def mark_session_finalized(session_id: str) -> None:
     """SW Background Sync fallback — sets ended_at if not already set."""
     async with _pool.acquire() as conn:

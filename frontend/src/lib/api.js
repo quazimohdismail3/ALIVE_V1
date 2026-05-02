@@ -34,6 +34,20 @@ export async function patchProfileCalibration({ rf_bpm, rf_locked }) {
   return r.json()
 }
 
+export async function getSessions(limit = 10) {
+  const headers = await authHeaders()
+  const r = await fetch(`${API_URL}/api/sessions?limit=${limit}`, { headers })
+  if (!r.ok) throw new Error(`getSessions failed: ${r.status}`)
+  return r.json()
+}
+
+export async function getRecommendations() {
+  const headers = await authHeaders()
+  const r = await fetch(`${API_URL}/api/recommendations`, { headers })
+  if (!r.ok) throw new Error(`getRecommendations failed: ${r.status}`)
+  return r.json()
+}
+
 export async function putProfile(profile) {
   const headers = {
     ...(await authHeaders()),
