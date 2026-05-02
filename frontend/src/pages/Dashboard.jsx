@@ -99,9 +99,9 @@ function RecommendationCard({ rec }) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ onStart }) {
+export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm = 5.5 }) {
   const { user, signOut } = useAuth()
-  const { latestRR }      = useSensorContext()
+  const { latestRR, bleStatus, requestBle } = useSensorContext()
 
   const [sessions, setSessions]             = useState([])
   const [recs, setRecs]                     = useState([])
@@ -136,11 +136,12 @@ export default function Dashboard({ onStart }) {
 
   const selectedMode = MODES.find(m => m.key === modeKey) ?? MODES[1]
 
-  function handleStart() {
+  function handleStart(skipCalibration = false) {
     onStart({
       session: sessionId,
       sensorMode: selectedMode.sensorMode,
       backendMode: selectedMode.backendMode,
+      ...(skipCalibration && { skipCalibration: true, rfBpm: savedRfBpm, rfLocked: false }),
     })
   }
 
@@ -164,9 +165,9 @@ export default function Dashboard({ onStart }) {
           </button>
         </div>
 
-        {/* Live sensor status */}
+        {/* Live sensor status — rfLocked not relevant on Dashboard, hide it */}
         <div style={{ marginBottom: 32 }}>
-          <SensorStatusBar rfLocked={false} sqi={null} />
+          <SensorStatusBar rfLocked={null} sqi={null} />
         </div>
 
         {/* Recommendations */}
@@ -263,9 +264,25 @@ export default function Dashboard({ onStart }) {
           </div>
         </div>
 
-        {/* CTA */}
+        {/* Connect H10 CTA — shown when H10/combined mode selected and not yet connected */}
+        {(modeKey === 'h10' || modeKey === 'combined') && bleStatus !== 'connected' && (
+          <button
+            onClick={requestBle}
+            disabled={bleStatus === 'reconnecting'}
+            style={{
+              width: '100%', background: 'transparent', color: '#7C6FF7',
+              border: '1.5px solid rgba(124,111,247,0.5)', borderRadius: 12, padding: '12px',
+              fontWeight: 600, fontSize: 14, cursor: bleStatus === 'reconnecting' ? 'not-allowed' : 'pointer',
+              marginBottom: 12, opacity: bleStatus === 'reconnecting' ? 0.6 : 1,
+            }}
+          >
+            {bleStatus === 'reconnecting' ? 'Connecting to H10…' : 'Connect Polar H10'}
+          </button>
+        )}
+
+        {/* Begin Session CTA */}
         <button
-          onClick={handleStart}
+          onClick={() => handleStart(false)}
           className="touch-target fade-slide-up"
           style={{
             width: '100%', background: 'var(--primary)', color: '#fff',
@@ -276,6 +293,20 @@ export default function Dashboard({ onStart }) {
         >
           Begin Session
         </button>
+
+        {/* Quick Start — skip re-calibration for returning users */}
+        {hasCalibrated && (
+          <button
+            onClick={() => handleStart(true)}
+            style={{
+              width: '100%', background: 'transparent', color: 'var(--text-dim)',
+              border: 'none', padding: '10px', fontSize: 13, cursor: 'pointer',
+              marginTop: 4,
+            }}
+          >
+            Quick Start — use last RF ({savedRfBpm.toFixed(1)} bpm)
+          </button>
+        )}
 
         {user?.email && (
           <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 12, marginTop: 20 }}>

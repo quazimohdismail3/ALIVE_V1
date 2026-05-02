@@ -102,7 +102,19 @@ function AppRoutes() {
       return (
         <Setup
           cfg={cfg}
-          onReady={(readyCfg) => { setCfg(readyCfg); setScreen('calibration') }}
+          onReady={(readyCfg) => {
+            const merged = { ...readyCfg }
+            if (cfg?.skipCalibration) {
+              // Returning user chose Quick Start — skip calibration, use saved RF
+              merged.rfBpm    = cfg.rfBpm    ?? 5.5
+              merged.rfLocked = cfg.rfLocked ?? false
+              setCfg(merged)
+              setScreen('session')
+            } else {
+              setCfg(merged)
+              setScreen('calibration')
+            }
+          }}
           onBack={() => setScreen('landing')}
         />
       )
@@ -157,6 +169,8 @@ function AppRoutes() {
     default: // 'landing'
       return (
         <Dashboard
+          hasCalibrated={profile?.calibration_done === true}
+          savedRfBpm={profile?.rf_bpm ?? 5.5}
           onStart={(c) => { setCfg(c); setScreen('setup') }}
         />
       )

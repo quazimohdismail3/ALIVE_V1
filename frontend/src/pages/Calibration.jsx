@@ -346,8 +346,8 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
           }} />
         </div>
         <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12, color: 'var(--text-dim)', fontSize: 11 }}>
-          <span>Dwell: {dwellRem}s</span>
-          <span>Elapsed: {Math.round(elapsed)}s / 120s</span>
+          <span>Next sweep in: {dwellRem}s</span>
+          <span>Elapsed: {Math.round(elapsed)}s · up to 2 min</span>
         </div>
       </div>
     </div>
