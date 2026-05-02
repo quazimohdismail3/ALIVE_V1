@@ -1,4 +1,4 @@
-﻿import { useState, useEffect } from 'react'
+﻿import { useState, useEffect, useCallback } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
@@ -95,27 +95,29 @@ function AppRoutes() {
     )
   }
 
+  const isOnboarding = profile?.calibration_done === false
+
+  const handleConnectionReady = useCallback(async (readyCfg) => {
+    setCfg(readyCfg)
+    if (isOnboarding) {
+      const p = await getProfile()
+      setProfile(p)
+      setScreen('landing')
+    } else {
+      setScreen('session')
+    }
+  }, [isOnboarding])
+
   switch (screen) {
-    case 'connection': {
-      const isOnboarding = profile?.calibration_done === false
+    case 'connection':
       return (
         <ConnectionRitual
           cfg={cfg}
           isOnboarding={isOnboarding}
-          onReady={async (readyCfg) => {
-            setCfg(readyCfg)
-            if (isOnboarding) {
-              const p = await getProfile()
-              setProfile(p)
-              setScreen('landing')
-            } else {
-              setScreen('session')
-            }
-          }}
+          onReady={handleConnectionReady}
           onBack={() => setScreen('landing')}
         />
       )
-    }
 
     case 'session':
       return (
