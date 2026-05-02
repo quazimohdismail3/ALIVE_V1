@@ -6,7 +6,10 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:headed": "playwright test --headed"
   },
   "dependencies": {
     "@sentry/react": "^10.51.0",
@@ -19,6 +22,7 @@
     "tone": "^14.7.77"
   },
   "devDependencies": {
+    "@playwright/test": "^1.59.1",
     "@vitejs/plugin-basic-ssl": "^1.2.0",
     "@vitejs/plugin-react": "^4.2.1",
     "vite": "^5.0.8"

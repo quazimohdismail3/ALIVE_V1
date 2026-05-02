@@ -78,6 +78,11 @@ docs/explainers/.last_doc_update
 .env.vercel.local
 .env.vercel.prod
 
+# Playwright
+playwright-report/
+test-results/
+frontend/e2e/.auth/
+
 # Graphify + MCP local state
 .graphify_detect.json
 .graphify_python
