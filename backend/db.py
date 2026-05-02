@@ -139,13 +139,18 @@ class Profile:
     height_cm: int
     weight_kg: Optional[Decimal]
     resting_hr: Optional[int]
+    calibration_done: bool = False
+    rf_bpm: Optional[Decimal] = None
+    rf_confidence_tag: Optional[str] = None
 
 
 async def get_profile(user_id: str) -> Optional[Profile]:
     async with _pool.acquire() as conn:
         row = await conn.fetchrow(
             """
-            select user_id::text, age, sex, height_cm, weight_kg, resting_hr
+            select user_id::text, age, sex, height_cm, weight_kg, resting_hr,
+                   coalesce(calibration_done, false) as calibration_done,
+                   rf_bpm, rf_confidence_tag
             from public.user_profiles
             where user_id = $1
             """,
@@ -154,6 +159,27 @@ async def get_profile(user_id: str) -> Optional[Profile]:
     if row is None:
         return None
     return Profile(**dict(row))
+
+
+async def set_calibration_done(
+    user_id: str,
+    rf_bpm: float,
+    rf_confidence_tag: str,
+) -> None:
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """
+            update public.user_profiles
+            set calibration_done = true,
+                rf_bpm = $2,
+                rf_confidence_tag = $3,
+                updated_at = now()
+            where user_id = $1
+            """,
+            uuid.UUID(user_id) if isinstance(user_id, str) else user_id,
+            rf_bpm,
+            rf_confidence_tag,
+        )
 
 
 async def upsert_profile(

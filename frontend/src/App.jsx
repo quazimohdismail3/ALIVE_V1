@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
+import LandingPage from './pages/LandingPage.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
 import { getProfile } from './lib/api.js'
@@ -55,7 +56,7 @@ function AppRoutes() {
     )
   }
 
-  if (!user) return <LoginScreen />
+  if (!user) return <LandingPage />
 
   if (profile === undefined && !profileErr) {
     return (
@@ -79,6 +80,27 @@ function AppRoutes() {
     return (
       <ProfileSetup
         onComplete={async () => {
+          const p = await getProfile()
+          setProfile(p)
+          setScreen('landing')
+        }}
+      />
+    )
+  }
+
+  // Calibration gate — first-time users must calibrate before reaching dashboard
+  if (profile.calibration_done === false && screen === 'landing') {
+    return (
+      <Calibration
+        cfg={cfg ?? { rfBpm: 5.5, rfLocked: false, session: 'find_your_calm', backendMode: 2, sensorMode: 2, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }}
+        isOnboarding={true}
+        onLocked={async (rfBpm, locked) => {
+          const p = await getProfile()
+          setProfile(p)
+          setCfg(c => ({ ...(c ?? {}), rfBpm, rfLocked: !!locked }))
+          setScreen('landing')
+        }}
+        onSkip={async () => {
           const p = await getProfile()
           setProfile(p)
           setScreen('landing')

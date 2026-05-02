@@ -19,7 +19,7 @@ import { SensorFusion } from '../sensors/sensor_fusion.js';
  *  4. On {cal_done} → onLocked(rf_bpm)
  *  5. Skip available any time → onLocked(5.5, false)
  */
-export default function Calibration({ cfg, onLocked, onSkip }) {
+export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = false }) {
   const { session, backendMode, timezone, fusion: existingFusion, sensorMode } = cfg ?? {};
 
   const [targetBpm, setTargetBpm]         = useState(5.5);
@@ -159,6 +159,9 @@ export default function Calibration({ cfg, onLocked, onSkip }) {
         clearInterval(sendIvRef.current);
         try { wsRef.current?.close(); } catch (_) {}
         // Brief pause so user sees the lock event, then advance
+        if (isOnboarding) {
+          patchProfileCalibration({ rf_bpm: bpm, rf_locked: locked }).catch(console.warn);
+        }
         setTimeout(() => onLocked(bpm, locked), 1200);
       }
     }

@@ -17,6 +17,23 @@ export async function getProfile() {
   return r.json()
 }
 
+export async function patchProfileCalibration({ rf_bpm, rf_locked }) {
+  const headers = {
+    ...(await authHeaders()),
+    'Content-Type': 'application/json',
+  }
+  const r = await fetch(`${API_URL}/api/profile/calibration`, {
+    method: 'PATCH',
+    headers,
+    body: JSON.stringify({ rf_bpm, rf_locked: !!rf_locked }),
+  })
+  if (!r.ok) {
+    const detail = await r.text()
+    throw new Error(`patchProfileCalibration failed: ${r.status} ${detail}`)
+  }
+  return r.json()
+}
+
 export async function putProfile(profile) {
   const headers = {
     ...(await authHeaders()),
