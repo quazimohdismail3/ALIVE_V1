@@ -196,20 +196,74 @@ export default function Insight({ data, onDone }) {
           </div>
         )}
 
-        {/* Done CTA */}
-        <button
-          onClick={onDone}
-          className="touch-target"
-          style={{
-            width: '100%', background: 'var(--primary)', color: '#fff',
-            border: 'none', borderRadius: 14, padding: '16px', fontWeight: 700,
-            fontSize: 17, cursor: 'pointer', fontFamily: 'var(--font-head)',
-            letterSpacing: '-0.01em',
-            boxShadow: '0 0 24px rgba(124,111,247,0.35)',
-          }}
-        >
-          Done
-        </button>
+        {/* RF confidence bar */}
+        {rf_bpm && (
+          <div className="v2-card fade-slide-up" style={{ marginBottom: 16 }}>
+            <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 10 }}>
+              Resonance frequency
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontWeight: 700, fontSize: 18, color: rf_locked ? '#1D9E75' : 'var(--text)' }}>
+                {rf_bpm.toFixed(1)} bpm
+              </span>
+              <span style={{
+                fontSize: 11, fontWeight: 600, padding: '2px 8px', borderRadius: 6,
+                background: rf_locked ? 'rgba(29,158,117,0.12)' : 'rgba(239,159,39,0.12)',
+                color: rf_locked ? '#1D9E75' : '#EF9F27',
+                border: `1px solid ${rf_locked ? 'rgba(29,158,117,0.3)' : 'rgba(239,159,39,0.3)'}`,
+              }}>
+                {rf_locked ? 'Locked' : 'Estimated'}
+              </span>
+            </div>
+            <div style={{ height: 6, borderRadius: 3, background: 'rgba(255,255,255,0.08)', overflow: 'hidden' }}>
+              <div style={{
+                height: '100%',
+                width: `${Math.round(((rf_bpm - 4.5) / 2.0) * 100)}%`,
+                background: rf_locked ? '#1D9E75' : '#EF9F27',
+                borderRadius: 3,
+                transition: 'width 600ms ease',
+              }} />
+            </div>
+            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 4 }}>
+              <span style={{ color: 'var(--text-dim)', fontSize: 10 }}>4.5 bpm</span>
+              <span style={{ color: 'var(--text-dim)', fontSize: 10 }}>6.5 bpm</span>
+            </div>
+          </div>
+        )}
+
+        {/* Done + Share CTAs */}
+        <div style={{ display: 'flex', gap: 12 }}>
+          <button
+            onClick={async () => {
+              const text = `ALIVE session complete\n${vsLabel(peak_vs)} — ${Math.round(peak_vs)} VS\nRF: ${rf_bpm ? rf_bpm.toFixed(1) + ' bpm' : '—'} | RMSSD: ${avg_rmssd ?? '—'}ms`
+              if (navigator.share) {
+                try { await navigator.share({ text }) } catch (_) {}
+              } else {
+                try { await navigator.clipboard.writeText(text) } catch (_) {}
+              }
+            }}
+            className="touch-target"
+            style={{
+              flex: '0 0 auto', background: 'rgba(124,111,247,0.12)', color: 'var(--primary)',
+              border: '1px solid rgba(124,111,247,0.3)', borderRadius: 14, padding: '16px 20px',
+              fontWeight: 600, fontSize: 15, cursor: 'pointer',
+            }}
+          >
+            Share
+          </button>
+          <button
+            onClick={onDone}
+            className="touch-target"
+            style={{
+              flex: 1, background: 'var(--primary)', color: '#fff',
+              border: 'none', borderRadius: 14, padding: '16px', fontWeight: 700,
+              fontSize: 17, cursor: 'pointer', fontFamily: 'var(--font-head)',
+              letterSpacing: '-0.01em', boxShadow: '0 0 24px rgba(124,111,247,0.35)',
+            }}
+          >
+            Done
+          </button>
+        </div>
       </div>
     </div>
   );
