@@ -55,6 +55,19 @@ function AppRoutes() {
     }
   }, [profile, screen])
 
+  const isOnboarding = profile?.calibration_done === false
+
+  const handleConnectionReady = useCallback(async (readyCfg) => {
+    setCfg(readyCfg)
+    if (isOnboarding) {
+      const p = await getProfile()
+      setProfile(p)
+      setScreen('landing')
+    } else {
+      setScreen('session')
+    }
+  }, [isOnboarding])
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
@@ -94,19 +107,6 @@ function AppRoutes() {
       />
     )
   }
-
-  const isOnboarding = profile?.calibration_done === false
-
-  const handleConnectionReady = useCallback(async (readyCfg) => {
-    setCfg(readyCfg)
-    if (isOnboarding) {
-      const p = await getProfile()
-      setProfile(p)
-      setScreen('landing')
-    } else {
-      setScreen('session')
-    }
-  }, [isOnboarding])
 
   switch (screen) {
     case 'connection':
