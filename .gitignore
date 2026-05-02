@@ -68,3 +68,18 @@ mission_alive.db
 logs/
 *.log
 .worktrees/
+# Added by code-review-graph
+.code-review-graph/
+
+# Doc updater local state (not committed — tracks which commits were processed)
+docs/explainers/.last_doc_update
+
+# Local env snapshots pulled by Vercel CLI
+.env.vercel.local
+.env.vercel.prod
+
+# Graphify + MCP local state
+.graphify_detect.json
+.graphify_python
+.mcp.json
+.code_review_diff.txt
