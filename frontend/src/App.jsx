@@ -20,21 +20,25 @@ function AppRoutes() {
   const [cfg, setCfg]             = useState(null)
   const [insightData, setInsightData] = useState(null)
   const [profile, setProfile]     = useState(undefined)  // undefined=loading, null=missing, obj=present
+  const [profileErr, setProfileErr] = useState(null)
+  const [profileRetry, setProfileRetry] = useState(0)
 
   useEffect(() => {
-    if (!user) { setProfile(undefined); return }
+    if (!user) { setProfile(undefined); setProfileErr(null); return }
     let cancelled = false
+    setProfile(undefined)
+    setProfileErr(null)
     ;(async () => {
       try {
         const p = await getProfile()
-        if (!cancelled) setProfile(p)
+        if (!cancelled) { setProfile(p); setProfileErr(null) }
       } catch (e) {
         console.error('profile fetch failed', e)
-        if (!cancelled) setProfile(null)
+        if (!cancelled) setProfileErr(e.message)
       }
     })()
     return () => { cancelled = true }
-  }, [user])
+  }, [user, profileRetry])
 
   if (loading) {
     return (
@@ -46,10 +50,20 @@ function AppRoutes() {
 
   if (!user) return <LoginScreen />
 
-  if (profile === undefined) {
+  if (profile === undefined && !profileErr) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #7C6FF7', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
+      </div>
+    )
+  }
+
+  if (profileErr) {
+    return (
+      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F', color: 'white', padding: '2rem', textAlign: 'center', gap: 12 }}>
+        <div style={{ fontSize: 16, color: '#E24B4A' }}>Could not reach server</div>
+        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', maxWidth: 280 }}>{profileErr}</div>
+        <button onClick={() => setProfileRetry(r => r + 1)} style={{ marginTop: 8, padding: '8px 20px', background: 'rgba(124,111,247,0.15)', border: '1px solid rgba(124,111,247,0.4)', borderRadius: 8, color: '#7C6FF7', cursor: 'pointer', fontSize: 13 }}>Retry</button>
       </div>
     )
   }
