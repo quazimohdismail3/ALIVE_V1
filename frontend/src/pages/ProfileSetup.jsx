@@ -97,7 +97,7 @@ export default function ProfileSetup({ onComplete }) {
           </p>
           <NumberInput value={data.resting_hr} onChange={set('resting_hr')} min={30} max={120} placeholder="60" suffix="bpm" allowEmpty />
           <Nav onBack={back} onNext={submit} canNext={true} nextLabel={submitting ? 'Saving…' : 'Finish'} disabled={submitting} />
-          {error && <p className={styles.softError}>Something didn't save. Let's try again.</p>}
+          {error && <p className={styles.softError}>Could not save — {error}</p>}
         </Card>
       )}
       {current === 'done' && (
