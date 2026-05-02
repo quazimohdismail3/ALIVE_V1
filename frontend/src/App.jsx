@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
+import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
 import { getProfile } from './lib/api.js'
@@ -16,6 +17,7 @@ import Insight from './pages/Insight.jsx'
  */
 function AppRoutes() {
   const { user, loading } = useAuth()
+  const { startMic } = useSensorContext()
   const [screen, setScreen]       = useState('landing')
   const [cfg, setCfg]             = useState(null)
   const [insightData, setInsightData] = useState(null)
@@ -31,14 +33,19 @@ function AppRoutes() {
     ;(async () => {
       try {
         const p = await getProfile()
-        if (!cancelled) { setProfile(p); setProfileErr(null) }
+        if (!cancelled) {
+          setProfile(p)
+          setProfileErr(null)
+          // Start mic once we have a confirmed user — no gesture required for mic
+          startMic()
+        }
       } catch (e) {
         console.error('profile fetch failed', e)
         if (!cancelled) setProfileErr(e.message)
       }
     })()
     return () => { cancelled = true }
-  }, [user, profileRetry])
+  }, [user, profileRetry, startMic])
 
   if (loading) {
     return (
@@ -134,7 +141,9 @@ function AppRoutes() {
 export default function App() {
   return (
     <AuthProvider>
-      <AppRoutes />
+      <SensorProvider>
+        <AppRoutes />
+      </SensorProvider>
     </AuthProvider>
   )
 }

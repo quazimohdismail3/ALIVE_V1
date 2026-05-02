@@ -265,3 +265,16 @@ async def create_session_row(user_id: str, data: dict) -> str:
             data.get("baseline_weight", 0.0),
         )
     return session_id
+
+
+async def mark_session_finalized(session_id: str) -> None:
+    """SW Background Sync fallback — sets ended_at if not already set."""
+    async with _pool.acquire() as conn:
+        await conn.execute(
+            """
+            update public.sessions
+            set ended_at = now(), updated_at = now()
+            where id = $1 and ended_at is null
+            """,
+            session_id,
+        )

@@ -5,12 +5,24 @@ export class BleH10Sensor {
         this.accelBuffer = [];
         this._device = null;
         this._server = null;
+        this._connected = false;
+        this._stopped = false;
+        this._listenerBound = false;
+        this._reconnectAttempt = 0;
+        this._onStatusChange = null; // (status: 'connected'|'reconnecting'|'failed'|'fallback') => void
+    }
+
+    onStatusChange(cb) {
+        this._onStatusChange = cb;
+        return this;
+    }
+
+    _emit(status) {
+        if (this._onStatusChange) this._onStatusChange(status);
     }
 
     async start() {
         try {
-            // Filter on Heart Rate Service so any HR-advertising device qualifies, plus
-            // namePrefix variants ("Polar H10", "Polar H10 ABC123") as a fallback path.
             const device = await navigator.bluetooth.requestDevice({
                 filters: [
                     { services: ['heart_rate'] },
@@ -19,19 +31,21 @@ export class BleH10Sensor {
                 optionalServices: ['heart_rate']
             });
             this._device = device;
-            this._connected = false;
             this._stopped = false;
+            this._reconnectAttempt = 0;
 
-            // Reconnect handler — strap can drop briefly when wetness or contact dips.
             device.addEventListener('gattserverdisconnected', () => {
                 this._connected = false;
-                console.warn('[H10] disconnected — attempting reconnect');
-                if (!this._stopped) this._reconnect();
+                if (!this._stopped) {
+                    this._emit('reconnecting');
+                    this._reconnect(1);
+                }
             });
 
             await this._connect();
         } catch (err) {
-            console.warn('H10 start failed (non-fatal):', err);
+            console.warn('[H10] start failed:', err);
+            this._emit('failed');
         }
     }
 
@@ -50,22 +64,30 @@ export class BleH10Sensor {
             this._listenerBound = true;
         }
         this._connected = true;
+        this._reconnectAttempt = 0;
+        this._emit('connected');
     }
 
+    // Indefinite reconnect — no attempt cap. Delay caps at 30s.
+    // After 3 consecutive failures, emits 'fallback' so SensorContext can switch to rPPG.
     async _reconnect(attempt = 1) {
-        if (this._stopped || attempt > 5) return;
-        const delay = Math.min(1000 * 2 ** (attempt - 1), 8000);
+        if (this._stopped) return;
+        this._reconnectAttempt = attempt;
+        const delay = Math.min(1000 * Math.pow(2, attempt - 1), 30000);
         await new Promise(r => setTimeout(r, delay));
+        if (this._stopped) return;
         try {
             await this._connect();
         } catch (e) {
             console.warn(`[H10] reconnect attempt ${attempt} failed:`, e);
+            if (attempt === 3) this._emit('fallback');
             this._reconnect(attempt + 1);
         }
     }
 
     stop() {
         this._stopped = true;
+        this._connected = false;
         try { if (this._device?.gatt?.connected) this._device.gatt.disconnect(); } catch(_) {}
     }
 
@@ -78,12 +100,9 @@ export class BleH10Sensor {
         const hr16bit = (flags & 0x01) !== 0;
         const rrPresent = (flags & 0x10) !== 0;
         if (!rrPresent) return;
-        // Skip flags byte + HR value byte(s).
-        // Optionally: Energy Expended (uint16) if bit 3 set — skip it before RRs.
         let offset = 1 + (hr16bit ? 2 : 1);
         const eePresent = (flags & 0x08) !== 0;
         if (eePresent) offset += 2;
-        // RR field is uint16; need 2 bytes available so offset + 2 must fit.
         while (offset + 2 <= data.byteLength) {
             const rr_1024 = view.getUint16(offset, true);
             const rr_ms = (rr_1024 / 1024) * 1000;
@@ -95,15 +114,8 @@ export class BleH10Sensor {
         }
     }
 
-    isConnected() {
-        return !!this._connected;
-    }
-
-    getLatestRR() {
-        return { rr_ms: [...this.rrBuffer], confidence: 0.95, source: 'h10' };
-    }
-
-    getLatestAccel() {
-        return { signal: [...this.accelBuffer], fs: 25.0 };
-    }
+    isConnected() { return !!this._connected; }
+    getReconnectAttempt() { return this._reconnectAttempt; }
+    getLatestRR() { return { rr_ms: [...this.rrBuffer], confidence: 0.95, source: 'h10' }; }
+    getLatestAccel() { return { signal: [...this.accelBuffer], fs: 25.0 }; }
 }

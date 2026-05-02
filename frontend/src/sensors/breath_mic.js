@@ -8,6 +8,16 @@ export class BreathMicSensor {
         this._intervalId = null;
         this._sampleId = null;
         this._respAmpBuffer = [];   // recent band-power samples (~4 Hz)
+        this._onStatusChange = null; // (status: 'active'|'error'|'unavailable') => void
+    }
+
+    onStatusChange(cb) {
+        this._onStatusChange = cb;
+        return this;
+    }
+
+    _emit(status) {
+        if (this._onStatusChange) this._onStatusChange(status);
     }
 
     async start() {
@@ -19,11 +29,19 @@ export class BreathMicSensor {
             this.analyser.fftSize = 8192;
             src.connect(this.analyser);
             this.running = true;
+            this._emit('active');
             this._intervalId = setInterval(() => this._update(), 5000);
             this._sampleId = setInterval(() => this._sampleBandAmp(), 250); // ~4 Hz
             this._update();
         } catch (err) {
-            console.warn('BreathMic start failed (non-fatal):', err);
+            console.warn('BreathMic start failed:', err);
+            if (err.name === 'NotAllowedError') {
+                this._emit('unavailable');
+            } else {
+                this._emit('error');
+                // Auto-retry once after 5s for transient errors
+                setTimeout(() => { if (!this.running) this.start(); }, 5000);
+            }
         }
     }
 

@@ -315,7 +315,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           </div>
           <div className="v2-card">
             <div style={{ color: 'var(--text-dim)', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>Sensors</div>
-            <SensorStatusBar mode={sensorMode} sensorStatus={sensorReady ? 'ready' : 'starting'} rfLocked={frame?.rf_locked} />
+            <SensorStatusBar rfLocked={frame?.rf_locked} />
           </div>
         </div>
 

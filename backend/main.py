@@ -135,6 +135,21 @@ async def end_session(req: SessionEndRequest):
     }
 
 
+class FinalizeRequest(BaseModel):
+    session_id: str
+    final_hrv: dict = {}
+
+@app.post("/api/session/finalize")
+async def finalize_session(req: FinalizeRequest):
+    """Background Sync fallback — called by SW when page is killed mid-session."""
+    if os.environ.get("DATABASE_URL") and req.session_id:
+        try:
+            await db.mark_session_finalized(req.session_id)
+        except Exception:
+            pass
+    return {"finalized": True}
+
+
 @app.websocket("/ws/session")
 async def ws_session(
     websocket: WebSocket,
@@ -168,6 +183,16 @@ async def ws_session(
     client_tz = auth_msg.get("timezone", "UTC")
     sentry_sdk.set_user({"id": user_id, "email": user_claims.get("email")})
     await websocket.send_json({"type": "auth_ok"})
+
+    # Ping-pong keepalive — prevents proxy timeouts on long-running WS connections
+    async def _keepalive():
+        while True:
+            await asyncio.sleep(30)
+            try:
+                await websocket.send_json({"type": "ping"})
+            except Exception:
+                return
+    asyncio.create_task(_keepalive())
 
     # --- Detect calibration vs session intent: peek next message
     # Frontend sends {type:"cal_start"} for calibration WS, {type:"session_start"}
@@ -305,6 +330,7 @@ async def ws_session(
                 # Emit cal frame ~1Hz
                 _cm = proc.compute()
                 await websocket.send_json({
+                    "type": "cal_progress",
                     "cal": True,
                     "target_bpm": round(float(target_bpm), 2),
                     "dwell_remaining": max(0.0, CAL_DWELL_S - dwell_elapsed),
@@ -391,6 +417,7 @@ async def ws_session(
 
         try:
             await websocket.send_json({
+                "type": "cal_done",
                 "cal_done": True,
                 "rf_bpm": round(float(rf_bpm), 2),
                 "rf_locked": bool(rf_locked),
@@ -400,11 +427,7 @@ async def ws_session(
             })
         except Exception:
             pass
-
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+        # WS stays open after cal_done — SensorContext reuses it for session phase.
         return
 
     # ============================================================
@@ -491,6 +514,7 @@ async def ws_session(
             metrics = proc.compute()
             if metrics is None:
                 await websocket.send_json({
+                    "type": "status",
                     "t": elapsed,
                     "status": "buffering",
                     "n_rr": len(proc.buf),
@@ -499,6 +523,7 @@ async def ws_session(
 
             if sqi is not None and sqi < flt.sqi_threshold:
                 await websocket.send_json({
+                    "type": "status",
                     "t": elapsed,
                     "status": "low_sqi",
                     "sqi": round(sqi, 3),
@@ -596,6 +621,7 @@ async def ws_session(
 
             # --- Emit frame
             await websocket.send_json({
+                "type": "session_frame",
                 "t": elapsed,
                 "metrics": metrics.to_dict(),
                 "state": state.to_dict(),
@@ -645,7 +671,5 @@ async def ws_session(
                         "discarded": False,
                     },
                 )
-        try:
-            await websocket.close()
-        except Exception:
-            pass
+        # WS stays open after session_end — SensorContext reuses it.
+        pass
