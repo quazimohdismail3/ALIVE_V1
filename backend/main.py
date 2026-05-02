@@ -551,6 +551,13 @@ async def ws_session(
                     if rf_coherence >= _rf_config["min_coherence_lock"]:
                         rf_locked = True
                         rf_bpm, _ = rf_optimizer.best_estimate()
+                        await websocket.send_json({
+                            "type": "phase2_rf_update",
+                            "rf_bpm": round(float(rf_bpm), 2),
+                            "rf_locked": True,
+                            "coherence": round(float(rf_coherence), 3),
+                            "confidence_tag": _rf_config.get("confidence_tag", "DRAFT"),
+                        })
                     else:
                         rf_bpm = rf_optimizer.next_evaluation_point()
 

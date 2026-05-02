@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js';
 import { SessionAudio } from '../audio/session_audio.js';
 import { useWakeLock } from '../hooks/useWakeLock.js';
 import { useSessionAccum } from '../hooks/useSessionAccum.js';
+import { usePhase2RFConvergence } from '../hooks/usePhase2RFConvergence.js';
 import { AnsState } from '../components/AnsState.jsx';
 import { HrvMetrics } from '../components/HrvMetrics.jsx';
 import { MusicParams } from '../components/MusicParams.jsx';
@@ -47,6 +48,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const { session, sensorMode, backendMode, timezone, rfBpm } = cfg ?? {};
   const { acquire, release } = useWakeLock();
   const { push: accumPush, summarize, reset: accumReset } = useSessionAccum();
+  usePhase2RFConvergence();
 
   const [frame, setFrame]           = useState(null);
   const [wsStatus, setWsStatus]     = useState('connecting');
