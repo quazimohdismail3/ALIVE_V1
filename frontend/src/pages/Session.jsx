@@ -14,8 +14,6 @@ import { DiscardSheet } from '../components/DiscardSheet.jsx';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-const SESSION_DURATION_S = 600;
-
 // VS score → color band (matches backend vs_score.py)
 function vsColor(vs) {
   if (vs >= 76) return '#534AB7';
@@ -45,7 +43,8 @@ async function postSessionEnd(summary) {
 }
 
 export default function Session({ cfg, onEnd, onDiscard }) {
-  const { session, sensorMode, backendMode, timezone, rfBpm } = cfg ?? {};
+  const { session, sensorMode, backendMode, timezone, rfBpm, durationS } = cfg ?? {};
+  const sessionDurationS = durationS ?? 600;
   const { acquire, release } = useWakeLock();
   const { push: accumPush, summarize, reset: accumReset } = useSessionAccum();
   usePhase2RFConvergence();
@@ -103,7 +102,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       if (cancelled) return;
 
       // B2 fix: pass cfg.session (not token+timestamp) as first arg
-      const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone });
+      const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone, durationS: sessionDurationS });
       ws.connect();
       // Tell backend this is a session WS (not calibration), avoids 2s peek timeout
       const flushSentinel = setInterval(() => {
@@ -133,7 +132,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       timerRef.current = setInterval(() => {
         const e = Math.floor((Date.now() - startTimeRef.current) / 1000);
         setElapsed(e);
-        if (e >= SESSION_DURATION_S) endSession(false);
+        if (sessionDurationS > 0 && e >= sessionDurationS) endSession(false);
       }, 1000);
 
       // RR + resp_amp send loop
@@ -207,12 +206,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       return;
     }
     cleanup(true);
-    const summary = summarize();
-    if (summary) {
-      summary.session_type = session;
-      summary.mode = backendMode ?? sensorMode ?? 1;
-      await postSessionEnd(summary);
-    }
+    const summary = summarize() ?? {
+      peak_vs: 0, final_vs: 0, skill_transfer: 0,
+      avg_rmssd: null, dominant_ans: 'unknown',
+      rf_locked: false, rf_bpm: rfBpm ?? 5.5,
+      duration_s: elapsed,
+    };
+    summary.session_type = session;
+    summary.mode = backendMode ?? sensorMode ?? 1;
+    await postSessionEnd(summary);
     onEnd(summary);
   }
 
@@ -305,7 +307,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
             currentPhase={frame?.session_phase}
             sessionType={session}
             elapsed={elapsed}
-            duration={SESSION_DURATION_S}
+            duration={sessionDurationS || 600}
           />
         </div>
 

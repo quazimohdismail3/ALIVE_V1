@@ -34,6 +34,14 @@ const SESSIONS = [
     desc: 'Activate healthy sympathetic tone for focused, energised presence.' },
 ]
 
+// ── Duration options ──────────────────────────────────────────────────────────
+const DURATIONS = [
+  { label: '5 min',  s: 300 },
+  { label: '10 min', s: 600 },
+  { label: '20 min', s: 1200 },
+  { label: 'Open',   s: 0 },
+]
+
 // ── Sensor modes ─────────────────────────────────────────────────────────────
 const MODES = [
   { sensorMode: 1, backendMode: 1, key: 'phone',    label: 'Phone Only',      badge: 'Medium confidence',
@@ -108,6 +116,7 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
   const [loadingData, setLoadingData]       = useState(true)
   const [modeKey, setModeKey]               = useState('h10')
   const [sessionId, setSessionId]           = useState('find_your_calm')
+  const [durationS, setDurationS]           = useState(600)
 
   const latestHR = latestRR.length > 0
     ? Math.round(60000 / latestRR[latestRR.length - 1])
@@ -141,12 +150,35 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
       session: sessionId,
       sensorMode: selectedMode.sensorMode,
       backendMode: selectedMode.backendMode,
+      durationS,
       ...(skipCalibration && { skipCalibration: true, rfBpm: savedRfBpm, rfLocked: false }),
     })
   }
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden' }}>
+      <style>{`
+        @keyframes hrOrbPulse {
+          0%   { transform: scale(1.0); opacity: 0.85; }
+          50%  { transform: scale(1.08); opacity: 1; }
+          100% { transform: scale(1.0); opacity: 0.85; }
+        }
+      `}</style>
+
+      {latestHR != null && bleStatus === 'connected' && (
+        <div style={{
+          position: 'fixed', top: 16, left: 16, zIndex: 20,
+          width: 56, height: 56, borderRadius: '50%',
+          background: 'radial-gradient(circle, rgba(124,111,247,0.35) 0%, transparent 70%)',
+          border: '1.5px solid rgba(124,111,247,0.5)',
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          animation: `hrOrbPulse ${(60000 / latestHR / 1000).toFixed(2)}s ease-in-out infinite`,
+        }}>
+          <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1 }}>{latestHR}</span>
+          <span style={{ fontSize: 8, color: 'var(--text-dim)', marginTop: 1 }}>bpm</span>
+        </div>
+      )}
+
       <div className="ambient-bg" />
 
       <div style={{ position: 'relative', zIndex: 1, maxWidth: 480, margin: '0 auto', padding: '48px 20px 40px' }}>
@@ -231,6 +263,34 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
                     )}
                   </div>
                 </div>
+              )
+            })}
+          </div>
+        </div>
+
+        {/* Duration picker */}
+        <div style={{ marginBottom: 24 }}>
+          <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
+            Duration
+          </div>
+          <div style={{ display: 'flex', gap: 8 }}>
+            {DURATIONS.map(d => {
+              const active = durationS === d.s
+              return (
+                <button
+                  key={d.s}
+                  onClick={() => setDurationS(d.s)}
+                  style={{
+                    flex: 1, padding: '10px 4px', borderRadius: 10, cursor: 'pointer',
+                    border: `1.5px solid ${active ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}`,
+                    background: active ? 'rgba(124,111,247,0.15)' : 'transparent',
+                    color: active ? 'var(--primary)' : 'var(--text-dim)',
+                    fontWeight: active ? 700 : 400, fontSize: 13,
+                    transition: 'all 150ms ease',
+                  }}
+                >
+                  {d.label}
+                </button>
               )
             })}
           </div>

@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+﻿import { useState, useEffect } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
@@ -6,17 +6,15 @@ import LandingPage from './pages/LandingPage.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
 import { getProfile } from './lib/api.js'
-import Landing from './pages/Landing.jsx'
 import Dashboard from './pages/Dashboard.jsx'
-import Setup from './pages/Setup.jsx'
-import Calibration from './pages/Calibration.jsx'
 import Session from './pages/Session.jsx'
+import ConnectionRitual from './pages/ConnectionRitual.jsx'
 import Insight from './pages/Insight.jsx'
 
 /**
- * Screens: login → landing → setup → calibration → session → insight
- * Discard path: session → landing (bypasses insight)
- */
+ * // Screens: login -> landing -> connection -> session -> insight
+ * Discard path: session -> landing (bypasses insight)
+  */
 function AppRoutes() {
   const { user, loading } = useAuth()
   const { startMic } = useSensorContext()
@@ -38,7 +36,7 @@ function AppRoutes() {
         if (!cancelled) {
           setProfile(p)
           setProfileErr(null)
-          // Start mic once we have a confirmed user — no gesture required for mic
+          // Start mic once we have a confirmed user â€” no gesture required for mic
           startMic()
         }
       } catch (e) {
@@ -53,7 +51,7 @@ function AppRoutes() {
   useEffect(() => {
     if (profile && profile.calibration_done === false && screen === 'landing') {
       setCfg({ rfBpm: 5.5, rfLocked: false, session: 'find_your_calm', backendMode: 2, sensorMode: 2, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
-      setScreen('setup')
+      setScreen('connection')
     }
   }, [profile, screen])
 
@@ -105,7 +103,7 @@ function AppRoutes() {
           onReady={(readyCfg) => {
             const merged = { ...readyCfg }
             if (cfg?.skipCalibration) {
-              // Returning user chose Quick Start — skip calibration, use saved RF
+              // Returning user chose Quick Start â€” skip calibration, use saved RF
               merged.rfBpm    = cfg.rfBpm    ?? 5.5
               merged.rfLocked = cfg.rfLocked ?? false
               setCfg(merged)
@@ -171,7 +169,7 @@ function AppRoutes() {
         <Dashboard
           hasCalibrated={profile?.calibration_done === true}
           savedRfBpm={profile?.rf_bpm ?? 5.5}
-          onStart={(c) => { setCfg(c); setScreen('setup') }}
+          onStart={(c) => { setCfg(c); setScreen('connection') }}
         />
       )
   }
@@ -186,3 +184,5 @@ export default function App() {
     </AuthProvider>
   )
 }
+
+
