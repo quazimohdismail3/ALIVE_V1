@@ -1,16 +1,16 @@
 # backend/api/sessions.py
 from fastapi import APIRouter, Depends, HTTPException
-from backend.api.profile import get_current_user
+from backend.auth import get_current_user
 from backend import db
 
 router = APIRouter()
 
 
 @router.get("/api/sessions")
-async def list_sessions(limit: int = 10, user=Depends(get_current_user)):
+async def list_sessions(limit: int = 10, user: str = Depends(get_current_user)):
     if limit < 1 or limit > 50:
         raise HTTPException(status_code=400, detail="limit must be 1–50")
-    rows = await db.get_sessions(user["sub"], limit)
+    rows = await db.get_sessions(user, limit)
     result = []
     for r in rows:
         result.append({
@@ -31,8 +31,8 @@ async def list_sessions(limit: int = 10, user=Depends(get_current_user)):
 
 
 @router.get("/api/recommendations")
-async def get_recommendations(user=Depends(get_current_user)):
-    sessions = await db.get_sessions(user["sub"], limit=5)
+async def get_recommendations(user: str = Depends(get_current_user)):
+    sessions = await db.get_sessions(user, limit=5)
     recs = []
     if not sessions:
         recs.append({
