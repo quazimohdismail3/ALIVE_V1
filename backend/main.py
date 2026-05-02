@@ -271,7 +271,7 @@ async def ws_session(
     # CALIBRATION PHASE (if cal_active): adaptive RF sweep
     # ============================================================
     if cal_active:
-        CAL_DWELL_S = 30.0    # dwell at each candidate frequency
+        CAL_DWELL_S = 90.0    # dwell at each candidate frequency (minimum for RSA estimation)
         CAL_CAP_S = 120.0     # absolute timeout
         cal_start_t = time.time()
         target_bpm = rf_optimizer.f0

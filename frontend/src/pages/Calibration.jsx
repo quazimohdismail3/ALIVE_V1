@@ -179,10 +179,10 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // Breathing orb: 60% inhale / 40% exhale of period
+  // Breathing orb: 40% inhale / 60% exhale of period (clinically correct)
   const periodS = 60 / Math.max(targetBpm, 3.5);
-  const inhaleS = (periodS * 0.6).toFixed(2);
-  const exhaleS = (periodS * 0.4).toFixed(2);
+  const inhaleS = (periodS * 0.4).toFixed(2);
+  const exhaleS = (periodS * 0.6).toFixed(2);
   const showHrvPanel = liveNRr >= 30;
   const breatheDur = (parseFloat(inhaleS) + parseFloat(exhaleS)).toFixed(2);
 
@@ -191,7 +191,7 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
       <style>{`
         @keyframes calBreathe {
           0%   { transform: scale(0.7); opacity: 0.6; }
-          60%  { transform: scale(1.15); opacity: 1; }
+          40%  { transform: scale(1.15); opacity: 1; }
           100% { transform: scale(0.7); opacity: 0.6; }
         }
         @keyframes calHrPulse {

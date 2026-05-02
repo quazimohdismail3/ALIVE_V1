@@ -36,21 +36,45 @@ def compute_coherence_at_frequency(
     return float(np.max(Cxy[mask]))
 
 
+def compute_prior_rf_bpm(height_cm: float, sex: str = "male") -> float:
+    """Iizawa 2024 height-based RF prior. Clamped to [4.5, 6.5]."""
+    if sex == "female":
+        rf = 15.88 - 0.06 * height_cm
+    else:
+        rf = 17.90 - 0.07 * height_cm
+    return round(max(4.5, min(6.5, rf)), 1)
+
+
+def compute_rsa_amplitude(rr_intervals_ms: list, rf_bpm: float) -> float:
+    """RSA amplitude: peak-to-trough RR variation in the RF band (ms).
+    Uses 30s sliding window bandpass. Returns 0.0 if insufficient data."""
+    if len(rr_intervals_ms) < 20:
+        return 0.0
+    rr = np.array(rr_intervals_ms, dtype=float)
+    t = np.cumsum(rr / 1000.0)
+    t -= t[0]
+    if t[-1] < 20.0:
+        return 0.0
+    fs = 4.0
+    t_uniform = np.arange(0, t[-1], 1.0 / fs)
+    rr_interp = np.interp(t_uniform, t, rr)
+    rf_hz = rf_bpm / 60.0
+    low, high = max(0.01, rf_hz - 0.05), rf_hz + 0.05
+    sos = signal.butter(2, [low, high], btype="bandpass", fs=fs, output="sos")
+    filtered = signal.sosfiltfilt(sos, rr_interp)
+    return float(np.max(filtered) - np.min(filtered))
+
+
 class BayesianRFOptimizer:
     """GP surrogate model for personal RF search. Finds RF in 3–5 evaluations."""
 
-    def __init__(self, height_cm: float = None, prior_rf: float = None):
+    def __init__(self, height_cm: float = None, sex: str = "male", prior_rf: float = None):
         self.observations = []
-        self.search_bounds = (4.0, 8.5)
+        self.search_bounds = (4.5, 6.5)
         if prior_rf:
             self.f0 = prior_rf
-        elif height_cm:
-            if height_cm > 183:
-                self.f0 = 5.0
-            elif height_cm >= 168:
-                self.f0 = 5.5
-            else:
-                self.f0 = 6.0
+        elif height_cm is not None:
+            self.f0 = compute_prior_rf_bpm(height_cm, sex)
         else:
             self.f0 = 5.5
         self.next_freq = self.f0

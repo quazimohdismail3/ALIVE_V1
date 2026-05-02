@@ -37,11 +37,12 @@ export class BreathActuator {
     _cycle() {
         if (!this._running) return;
         const periodMs = (60 / this._rfBpm) * 1000;
-        const halfMs = periodMs / 2;
+        const inhaleMs = periodMs * 0.4; // 40% inhale — clinically correct I:E ratio
+        const exhaleMs = periodMs * 0.6; // 60% exhale
         try { this._synth.triggerAttack(174); } catch(_) {}
         this._timeout = setTimeout(() => {
             try { this._synth.triggerRelease(); } catch(_) {}
-            this._timeout = setTimeout(() => this._cycle(), halfMs);
-        }, halfMs);
+            this._timeout = setTimeout(() => this._cycle(), exhaleMs);
+        }, inhaleMs);
     }
 }
