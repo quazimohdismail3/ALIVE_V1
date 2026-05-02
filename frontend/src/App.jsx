@@ -49,6 +49,14 @@ function AppRoutes() {
     return () => { cancelled = true }
   }, [user, profileRetry, startMic])
 
+  // First-time users must go through Setup (to init sensors/fusion) before Calibration
+  useEffect(() => {
+    if (profile && profile.calibration_done === false && screen === 'landing') {
+      setCfg({ rfBpm: 5.5, rfLocked: false, session: 'find_your_calm', backendMode: 2, sensorMode: 2, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
+      setScreen('setup')
+    }
+  }, [profile, screen])
+
   if (loading) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
@@ -89,27 +97,6 @@ function AppRoutes() {
     )
   }
 
-  // Calibration gate — first-time users must calibrate before reaching dashboard
-  if (profile.calibration_done === false && screen === 'landing') {
-    return (
-      <Calibration
-        cfg={cfg ?? { rfBpm: 5.5, rfLocked: false, session: 'find_your_calm', backendMode: 2, sensorMode: 2, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }}
-        isOnboarding={true}
-        onLocked={async (rfBpm, locked) => {
-          const p = await getProfile()
-          setProfile(p)
-          setCfg(c => ({ ...(c ?? {}), rfBpm, rfLocked: !!locked }))
-          setScreen('landing')
-        }}
-        onSkip={async () => {
-          const p = await getProfile()
-          setProfile(p)
-          setScreen('landing')
-        }}
-      />
-    )
-  }
-
   switch (screen) {
     case 'setup':
       return (
@@ -120,20 +107,35 @@ function AppRoutes() {
         />
       )
 
-    case 'calibration':
+    case 'calibration': {
+      const isOnboarding = profile?.calibration_done === false
       return (
         <Calibration
           cfg={cfg}
-          onLocked={(rfBpm, locked) => {
+          isOnboarding={isOnboarding}
+          onLocked={async (rfBpm, locked) => {
             setCfg({ ...cfg, rfBpm, rfLocked: !!locked })
-            setScreen('session')
+            if (isOnboarding) {
+              const p = await getProfile()
+              setProfile(p)
+              setScreen('landing')
+            } else {
+              setScreen('session')
+            }
           }}
-          onSkip={() => {
+          onSkip={async () => {
             setCfg({ ...cfg, rfBpm: 5.5, rfLocked: false })
-            setScreen('session')
+            if (isOnboarding) {
+              const p = await getProfile()
+              setProfile(p)
+              setScreen('landing')
+            } else {
+              setScreen('session')
+            }
           }}
         />
       )
+    }
 
     case 'session':
       return (

@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { WSClient } from '../utils/ws_client.js';
 import { supabase } from '../lib/supabase.js';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
+import { patchProfileCalibration } from '../lib/api.js';
 
 /**
  * Calibration — adaptive RF sweep with paced breathing guide.
