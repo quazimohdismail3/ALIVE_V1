@@ -96,53 +96,23 @@ function AppRoutes() {
   }
 
   switch (screen) {
-    case 'setup':
+    case 'connection': {
+      const isOnboarding = profile?.calibration_done === false
       return (
-        <Setup
+        <ConnectionRitual
           cfg={cfg}
-          onReady={(readyCfg) => {
-            const merged = { ...readyCfg }
-            if (cfg?.skipCalibration) {
-              // Returning user chose Quick Start â€” skip calibration, use saved RF
-              merged.rfBpm    = cfg.rfBpm    ?? 5.5
-              merged.rfLocked = cfg.rfLocked ?? false
-              setCfg(merged)
-              setScreen('session')
+          isOnboarding={isOnboarding}
+          onReady={async (readyCfg) => {
+            setCfg(readyCfg)
+            if (isOnboarding) {
+              const p = await getProfile()
+              setProfile(p)
+              setScreen('landing')
             } else {
-              setCfg(merged)
-              setScreen('calibration')
+              setScreen('session')
             }
           }}
           onBack={() => setScreen('landing')}
-        />
-      )
-
-    case 'calibration': {
-      const isOnboarding = profile?.calibration_done === false
-      return (
-        <Calibration
-          cfg={cfg}
-          isOnboarding={isOnboarding}
-          onLocked={async (rfBpm, locked) => {
-            setCfg({ ...cfg, rfBpm, rfLocked: !!locked })
-            if (isOnboarding) {
-              const p = await getProfile()
-              setProfile(p)
-              setScreen('landing')
-            } else {
-              setScreen('session')
-            }
-          }}
-          onSkip={async () => {
-            setCfg({ ...cfg, rfBpm: 5.5, rfLocked: false })
-            if (isOnboarding) {
-              const p = await getProfile()
-              setProfile(p)
-              setScreen('landing')
-            } else {
-              setScreen('session')
-            }
-          }}
         />
       )
     }
@@ -169,7 +139,7 @@ function AppRoutes() {
         <Dashboard
           hasCalibrated={profile?.calibration_done === true}
           savedRfBpm={profile?.rf_bpm ?? 5.5}
-          onStart={(c) => { setCfg(c); setScreen('connection') }}
+          onStart={(c) => { setCfg({ ...c, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }); setScreen('connection') }}
         />
       )
   }
