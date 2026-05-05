@@ -80,13 +80,15 @@ Touch only what you must. Don't improve adjacent code, don't refactor unbroken t
 
 | Field                  | Value                                   |
 |------------------------|-----------------------------------------|
-| Current version        | V1.0 ✅                                 |
-| Real Polar H10 tested  | done                         |                           |
+| Current version        | V2 in progress                          |
+| Real Polar H10 tested  | done                                    |
 | Auth / Postgres        | ✅ Supabase + auth + profile            |
+| rf_engine              | ✅ wired — W_RF=0.0 UNTUNED (no H10 data yet) |
+| RF calibration resp    | ✅ fallback from breathing rate fixed   |
 | Deployed               | ❌ Local only                           |
 | Active users           | 0 (simulator)                           |
 | Launch clearance       | ❌ Do not launch                        |
-| Last updated           | 2026-04-30                              |
+| Last updated           | 2026-05-06                              |
 
 ---
 
