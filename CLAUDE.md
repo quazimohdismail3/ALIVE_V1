@@ -85,7 +85,7 @@ Touch only what you must. Don't improve adjacent code, don't refactor unbroken t
 | Auth / Postgres        | ✅ Supabase + auth + profile            |
 | rf_engine              | ✅ wired — W_RF=0.0 UNTUNED (no H10 data yet) |
 | RF calibration resp    | ✅ fallback from breathing rate fixed   |
-| Deployed               | ❌ Local only                           |
+| Deployed               | ✅ Railway (backend) + Vercel (frontend) |
 | Active users           | 0 (simulator)                           |
 | Launch clearance       | ❌ Do not launch                        |
 | Last updated           | 2026-05-06                              |
