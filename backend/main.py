@@ -256,7 +256,7 @@ async def ws_session(
     metrics = None
 
     # RF calibration state — per-session, reset on each WebSocket connection
-    rf_optimizer = BayesianRFOptimizer()  # default prior; no height/prior_rf without user profile
+    rf_optimizer = BayesianRFOptimizer(hrv_processor=proc)  # proc._rf_engine provides Mode 2 resp fallback
     rf_locked = False
     rf_bpm = rf_optimizer.f0
     rf_coherence = 0.0
@@ -545,12 +545,13 @@ async def ws_session(
             if not rf_locked:
                 elapsed_since_settle = time.time() - _settling_start
                 if elapsed_since_settle > _rf_config["settling_seconds"] and len(_rr_buffer) >= 15:
-                    _resp_arr = np.array(_resp_buffer[-100:]) if _resp_buffer else np.zeros(50)
+                    _resp_arr = rf_optimizer.get_resp_signal(_resp_buffer[-100:] if _resp_buffer else [])
                     rf_coherence = compute_coherence_at_frequency(_rr_buffer[-60:], _resp_arr, rf_bpm)
                     rf_optimizer.observe(rf_bpm, rf_coherence)
                     if rf_coherence >= _rf_config["min_coherence_lock"]:
                         rf_locked = True
                         rf_bpm, _ = rf_optimizer.best_estimate()
+                        est.user_calibrated_rf_hz = rf_bpm / 60.0  # sync personal RF to StateEstimator
                         await websocket.send_json({
                             "type": "phase2_rf_update",
                             "rf_bpm": round(float(rf_bpm), 2),
@@ -562,7 +563,7 @@ async def ws_session(
                         rf_bpm = rf_optimizer.next_evaluation_point()
 
             # --- Parallel classifiers
-            ans = classify_ans(metrics, state.rmssd_norm)
+            ans = classify_ans(metrics, state.rmssd_norm, rf_hz=state.rf_hz, rf_error=state.rf_error)
             affect = classify_affect(metrics, state.rmssd_norm)
             state_dom_counter[ans.state] = state_dom_counter.get(ans.state, 0) + 1
             last_ans = ans
@@ -598,7 +599,8 @@ async def ws_session(
                 # --- Dynamics + MPC
                 _steered = dyn.step(state, target, dt=1.0)
                 best_params, strategy, score = optimize(
-                    state=state, target=target, session=session_profile, prev_params=prev_params
+                    state=state, target=target, session=session_profile, prev_params=prev_params,
+                    rf_error=state.rf_error,
                 )
                 prev_params = best_params
 
@@ -644,6 +646,8 @@ async def ws_session(
                 "safety": {"safe": safety_status.safe, "reason": safety_status.reason},
                 "rf_locked": rf_locked,
                 "rf_bpm": rf_bpm,
+                "rf_hz": metrics.rf_hz if metrics is not None else None,
+                "rf_calibrated_hz": round(rf_bpm / 60.0, 4),
                 "rf_coherence": rf_coherence,
                 "session_phase": current_phase,
                 "session_type": session_manager.state.session_type,

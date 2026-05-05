@@ -20,6 +20,7 @@ from typing import Iterable
 import numpy as np
 
 from .config import MIN_RR_FOR_METRICS
+from .rf_engine import RFEngine
 
 
 SHORT_WINDOW = 30
@@ -42,6 +43,7 @@ class HRVMetrics:
     artifact_rate: float = 0.0   # fraction of RR diffs flagged as artifacts
     mean_sqi: float = 1.0        # signal quality index proxy (0–1)
     hr_drift_bpm: float = 0.0    # HR drift = max(HR) − min(HR) over session
+    rf_hz: float | None = None   # RR-derived respiratory frequency (Hz); None < 30s data
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -51,10 +53,12 @@ class HRVProcessor:
     def __init__(self, short: int = SHORT_WINDOW, long: int = LONG_WINDOW):
         self.short = short
         self.long = long
+        self._rf_engine = RFEngine()
         self.buf: deque[float] = deque(maxlen=long)
 
     def push(self, rr_ms: float) -> None:
         self.buf.append(float(rr_ms))
+        self._rf_engine.push_rr(rr_ms)
 
     def push_many(self, rrs: Iterable[float]) -> None:
         for r in rrs:
@@ -68,10 +72,11 @@ class HRVProcessor:
             return None
         rr = np.array(self.buf, dtype=float)
         rr_short = rr[-self.short:]
-        return self._metrics(rr, rr_short)
+        rf_hz = self._rf_engine.compute_rf()
+        return self._metrics(rr, rr_short, rf_hz=rf_hz)
 
     # --- internal
-    def _metrics(self, rr_long: np.ndarray, rr_short: np.ndarray) -> HRVMetrics:
+    def _metrics(self, rr_long: np.ndarray, rr_short: np.ndarray, rf_hz: float | None = None) -> HRVMetrics:
         diff = np.diff(rr_short)
         rmssd = float(np.sqrt(np.mean(diff ** 2))) if diff.size else 0.0
         sdnn = float(np.std(rr_short, ddof=0))
@@ -107,6 +112,7 @@ class HRVProcessor:
             artifact_rate=artifact_rate,
             mean_sqi=mean_sqi,
             hr_drift_bpm=hr_drift_bpm,
+            rf_hz=rf_hz,
         )
 
     @staticmethod

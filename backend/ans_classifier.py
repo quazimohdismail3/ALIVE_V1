@@ -31,16 +31,19 @@ class ANSClassification:
     state: str
     confidence: float
     scores: dict[str, float]
+    confidence_tag: str = "UNKNOWN"   # RF-derived: RESONANT | PARASYMPATHETIC | ENTRAINING | DYSREGULATED
 
     @property
     def actionable(self) -> bool:
         return self.confidence >= CONFIDENCE_GATE
 
 
-def classify(m: HRVMetrics, rmssd_norm: float) -> ANSClassification:
+def classify(m: HRVMetrics, rmssd_norm: float, rf_hz: float | None = None, rf_error: float | None = None) -> ANSClassification:
     """Score each polyvagal state from HRV metrics.
 
     rmssd_norm is the personal-percentile normalized RMSSD (0..1).
+    rf_hz and rf_error are optional RF entrainment signals; when provided,
+    a confidence_tag is derived from the 4-quadrant RF model.
     """
     s: dict[str, float] = {}
 
@@ -91,7 +94,20 @@ def classify(m: HRVMetrics, rmssd_norm: float) -> ANSClassification:
     probs = {k: v / total for k, v in sharpened.items()}
     state = max(probs, key=probs.get)
     confidence = probs[state]
-    return ANSClassification(state=state, confidence=confidence, scores=probs)
+    # RF confidence tag — sharpens ANS state with entrainment signal
+    if rf_hz is not None and rf_error is not None:
+        at_resonance = rf_error < 0.008  # within ~0.5 BPM of personal RF
+        if state == "ventral_vagal" and at_resonance:
+            confidence_tag = "RESONANT"      # highest therapeutic value
+        elif state == "ventral_vagal" and not at_resonance:
+            confidence_tag = "PARASYMPATHETIC"
+        elif state != "ventral_vagal" and at_resonance:
+            confidence_tag = "ENTRAINING"    # mechanism active, not yet recovered
+        else:
+            confidence_tag = "DYSREGULATED"
+    else:
+        confidence_tag = "UNKNOWN"
+    return ANSClassification(state=state, confidence=confidence, scores=probs, confidence_tag=confidence_tag)
 
 
 # --- helpers

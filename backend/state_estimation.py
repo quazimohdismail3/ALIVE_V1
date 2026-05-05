@@ -31,6 +31,8 @@ class StateVector:
     autonomic_balance: float
     recovery_rate: float
     rmssd_norm: float
+    rf_hz: float | None = None       # measured breathing rate from RFEngine
+    rf_error: float | None = None    # |rf_hz - user_calibrated_rf_hz| in Hz; None if rf_hz is None
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -77,13 +79,21 @@ def estimate_raw(m: HRVMetrics) -> StateVector:
 class StateEstimator:
     """Stateful EMA smoother and recovery_rate tracker."""
 
-    def __init__(self, alpha: float = EMA_ALPHA):
+    def __init__(self, alpha: float = EMA_ALPHA, user_calibrated_rf_hz: float = 0.1):
         self.alpha = alpha
+        self.user_calibrated_rf_hz = user_calibrated_rf_hz   # personal RF from profile, 0.1 Hz fallback
         self.smoothed: StateVector | None = None
         self._last_rmssd: float | None = None
 
     def update(self, m: HRVMetrics) -> StateVector:
+        # RF error: distance from personal resonance frequency
+        rf_error: float | None = None
+        if m.rf_hz is not None:
+            rf_error = abs(m.rf_hz - self.user_calibrated_rf_hz)
+
         raw = estimate_raw(m)
+        raw.rf_hz = m.rf_hz
+        raw.rf_error = rf_error
 
         # Recovery rate = EMA of ΔRMSSD (ms/cycle), normalized to ~[-1, 1]
         if self._last_rmssd is not None:
@@ -107,6 +117,8 @@ class StateEstimator:
             autonomic_balance=(1 - a) * s.autonomic_balance + a * raw.autonomic_balance,
             recovery_rate=raw.recovery_rate,
             rmssd_norm=(1 - a) * s.rmssd_norm + a * raw.rmssd_norm,
+            rf_hz=raw.rf_hz,      # not EMA-smoothed (instantaneous measurement)
+            rf_error=raw.rf_error, # not EMA-smoothed
         )
         self.smoothed = merged
         return merged

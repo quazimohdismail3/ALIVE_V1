@@ -18,6 +18,7 @@ from .state_estimation import StateVector
 
 N_CANDIDATES = 12
 SMOOTHNESS_PENALTY = 0.15
+W_RF = 0.0  # UNTUNED — set to 0.0 until ≥3 real H10 sessions complete (V2.1)
 _PERTURB_SCALE = {
     "bpm": 4.0,
     "rhythmic_complexity": 0.08,
@@ -90,9 +91,13 @@ def optimize(
     target: StateVector,
     session: str,
     prev_params: dict | None = None,
+    rf_error: float | None = None,
 ) -> tuple[dict, str, float]:
     """Return (best_params, strategy, score)."""
     base, strategy = generate_params(state, session)
+    # Music entrainment: at slow tempos, breathing synchronizes at 1:4 tempo:RF ratio.
+    # Target tempo for RF entrainment = user_rf_hz * 4 * 60 BPM (e.g., 0.1 Hz → 24 BPM accent).
+    # Forward model tempo-RF coupling: UNTUNED — implement after V2.1 data collection.
     candidates = [base] + [_perturb(base) for _ in range(N_CANDIDATES - 1)]
 
     best = None
@@ -102,7 +107,10 @@ def optimize(
         predicted = _add_delta(state, delta)
         err = _distance(predicted, target)
         smooth = 0.0 if prev_params is None else _params_distance(c, prev_params)
-        score = err + SMOOTHNESS_PENALTY * smooth
+        rf_score = 0.0
+        if rf_error is not None:
+            rf_score = 1.0 / (1.0 + rf_error * 10)  # peaks at rf_error=0, decays smoothly
+        score = err + SMOOTHNESS_PENALTY * smooth - W_RF * rf_score
         if score < best_score:
             best_score = score
             best = c

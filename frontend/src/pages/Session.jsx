@@ -75,6 +75,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       const rfPeriod = 60 / frame.rf_bpm;
       root.style.setProperty('--rf-period', `${rfPeriod.toFixed(1)}s`);
     }
+    // Ghost ring: calibrated personal RF period
+    const calHz = frame?.rf_calibrated_hz ?? 0.1;
+    root.style.setProperty('--rf-calibrated-period', `${(1 / calHz).toFixed(2)}s`);
+    // Inner orb: measured breathing rate period (null → remove so fallback applies)
+    if (frame?.rf_hz) {
+      root.style.setProperty('--rf-measured-period', `${(1 / frame.rf_hz).toFixed(2)}s`);
+    } else {
+      root.style.removeProperty('--rf-measured-period');
+    }
   }, [frame]);
 
   // Cleanup CSS on unmount
@@ -83,6 +92,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       document.documentElement.removeAttribute('data-ans');
       document.documentElement.style.removeProperty('--vs-period');
       document.documentElement.style.removeProperty('--rf-period');
+      document.documentElement.style.removeProperty('--rf-calibrated-period');
+      document.documentElement.style.removeProperty('--rf-measured-period');
     };
   }, []);
 
@@ -222,12 +233,16 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const color   = vsColor(vs);
   const rfPer   = frame?.rf_bpm ? 60 / frame.rf_bpm : 10;
 
+  const rfHz           = frame?.rf_hz ?? null;
+  const rfCalibratedHz = frame?.rf_calibrated_hz ?? 0.1;
+  const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.008;
+
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden' }}>
       <div className="ambient-bg" />
 
       {/* Living VS orb — pulses at VS-driven period */}
-      <div style={{
+      <div className={inResonance ? 'in-resonance' : ''} style={{
         position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)',
         width: 200, height: 200, borderRadius: '50%',
         background: `radial-gradient(circle, ${color}33 0%, transparent 70%)`,
@@ -248,10 +263,23 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         position: 'absolute', top: 'calc(18% - 20px)', left: '50%', transform: 'translateX(-50%)',
         width: 240, height: 240, borderRadius: '50%',
         border: `1.5px solid ${frame?.rf_locked ? 'var(--locked)' : 'rgba(255,255,255,0.08)'}`,
-        animation: `breatheRing var(--rf-period, 10s) ease-in-out infinite`,
+        animation: `breatheRing var(--rf-calibrated-period, 10s) ease-in-out infinite`,
         pointerEvents: 'none',
         transition: 'border-color 1000ms ease',
       }} />
+
+      {/* Measured RF inner ring — tracks actual breathing rate */}
+      {rfHz && (
+        <div style={{
+          position: 'absolute', top: 'calc(18% - 10px)', left: '50%', transform: 'translateX(-50%)',
+          width: 220, height: 220, borderRadius: '50%',
+          border: `1px solid ${inResonance ? 'rgba(124,111,247,0.5)' : 'rgba(255,255,255,0.05)'}`,
+          animation: `breatheRing var(--rf-measured-period, 10s) ease-in-out infinite`,
+          pointerEvents: 'none',
+          transition: 'border-color 800ms ease',
+          boxShadow: inResonance ? '0 0 20px rgba(124,111,247,0.3)' : 'none',
+        }} />
+      )}
 
       {/* Header row */}
       <div style={{ position: 'relative', zIndex: 2, display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '20px 20px 0' }}>

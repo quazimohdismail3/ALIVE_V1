@@ -60,17 +60,17 @@ def test_coherence_needs_min_duration():
 
 def test_bayesian_cold_start_height_tall():
     opt = BayesianRFOptimizer(height_cm=190)
-    assert opt.f0 == 5.0
+    assert opt.f0 == 4.6  # Iizawa formula: 17.90 - 0.07*190 = 4.60
 
 
 def test_bayesian_cold_start_height_medium():
     opt = BayesianRFOptimizer(height_cm=175)
-    assert opt.f0 == 5.5
+    assert opt.f0 == 5.6  # Iizawa formula: 17.90 - 0.07*175 = 5.65 → rounds to 5.6
 
 
 def test_bayesian_cold_start_height_short():
     opt = BayesianRFOptimizer(height_cm=160)
-    assert opt.f0 == 6.0
+    assert opt.f0 == 6.5  # Iizawa formula: 17.90 - 0.07*160 = 6.70 → clamped to 6.5
 
 
 def test_bayesian_prior_rf_overrides_height():

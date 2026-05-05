@@ -1,4 +1,9 @@
 # backend/rf_calibration.py
+from __future__ import annotations
+from typing import TYPE_CHECKING
+if TYPE_CHECKING:
+    from .hrv_processor import HRVProcessor
+
 import numpy as np
 from scipy import signal
 from scipy.optimize import minimize_scalar
@@ -68,7 +73,8 @@ def compute_rsa_amplitude(rr_intervals_ms: list, rf_bpm: float) -> float:
 class BayesianRFOptimizer:
     """GP surrogate model for personal RF search. Finds RF in 3–5 evaluations."""
 
-    def __init__(self, height_cm: float = None, sex: str = "male", prior_rf: float = None):
+    def __init__(self, height_cm: float = None, sex: str = "male", prior_rf: float = None, hrv_processor: "HRVProcessor | None" = None):
+        self._hrv_processor = hrv_processor
         self.observations = []
         self.search_bounds = (4.5, 6.5)
         if prior_rf:
@@ -119,6 +125,16 @@ class BayesianRFOptimizer:
         if not self.observations:
             return self.f0, 0.0
         return max(self.observations, key=lambda o: o[1])
+
+    def get_resp_signal(self, resp_buffer: list) -> "np.ndarray":
+        """Return resp signal for coherence computation. Falls back to RR-derived signal for Mode 2."""
+        if resp_buffer and not np.all(np.array(resp_buffer) == 0):
+            return np.array(resp_buffer, dtype=float)
+        if self._hrv_processor is not None:
+            synthetic = self._hrv_processor._rf_engine.as_resp_signal()
+            if len(synthetic) > 0:
+                return synthetic
+        return np.zeros(50)
 
 
 MODE_CALIBRATION_CONFIG = {
