@@ -11,6 +11,12 @@ from backend import db
 router = APIRouter(prefix="/api", tags=["profile"])
 
 
+def _require_pool() -> None:
+    """Raise 503 when the DB pool is not initialised (DATABASE_URL absent)."""
+    if db._pool is None:
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+
 class ProfileIn(BaseModel):
     age:        int   = Field(..., ge=13, le=100)
     sex:        str   = Field(..., pattern="^(male|female|prefer_not_to_say)$")
@@ -32,6 +38,7 @@ class ProfileOut(BaseModel):
 
 @router.get("/profile", response_model=ProfileOut)
 async def get_profile(user_id: str = Depends(get_current_user)) -> ProfileOut:
+    _require_pool()
     profile = await db.get_profile(user_id)
     if profile is None:
         raise HTTPException(status_code=404, detail="profile not found")
@@ -52,6 +59,7 @@ async def put_profile(
     body: ProfileIn,
     user_id: str = Depends(get_current_user),
 ) -> ProfileOut:
+    _require_pool()
     await db.upsert_profile(
         user_id,
         age=body.age,
@@ -73,6 +81,7 @@ async def patch_calibration(
     body: CalibrationPatch,
     user_id: str = Depends(get_current_user),
 ) -> ProfileOut:
+    _require_pool()
     tag = "REFINED" if body.rf_locked else "DRAFT"
     await db.set_calibration_done(user_id, body.rf_bpm, tag)
     profile = await db.get_profile(user_id)

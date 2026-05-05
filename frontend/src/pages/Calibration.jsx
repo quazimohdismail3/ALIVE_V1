@@ -3,6 +3,7 @@ import { WSClient } from '../utils/ws_client.js';
 import { supabase } from '../lib/supabase.js';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
 import { patchProfileCalibration } from '../lib/api.js';
+import { useSensorContext } from '../context/SensorContext.jsx';
 
 /**
  * Calibration — adaptive RF sweep with paced breathing guide.
@@ -22,6 +23,8 @@ import { patchProfileCalibration } from '../lib/api.js';
  */
 export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = false }) {
   const { session, backendMode, timezone, fusion: existingFusion, sensorMode } = cfg ?? {};
+  const needsH10 = sensorMode === 2 || sensorMode === 3;
+  const { bleStatus, bleError } = useSensorContext();
 
   const [targetBpm, setTargetBpm]         = useState(5.5);
   const [coherence, setCoherence]         = useState(0);
@@ -301,6 +304,14 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
           {status === 'error' && (
             <div style={{ color: 'var(--danger, #E24B4A)', fontSize: 14 }}>
               Calibration error — tap Skip
+            </div>
+          )}
+          {/* BLE error: shown when H10 is required but connection failed or dropped */}
+          {needsH10 && (bleStatus === 'failed' || bleStatus === 'fallback_rppg') && (
+            <div style={{ marginTop: 8, color: 'var(--danger, #E24B4A)', fontSize: 13, textAlign: 'center' }}>
+              {bleStatus === 'failed'
+                ? (bleError ?? 'Polar H10 not found — check Bluetooth and pairing')
+                : 'Polar H10 disconnected — using camera fallback'}
             </div>
           )}
         </div>

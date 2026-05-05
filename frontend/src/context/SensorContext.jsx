@@ -17,6 +17,7 @@ export function SensorProvider({ children }) {
     const wsFrameCbsRef = useRef({}) // { [type]: Set<callback> }
 
     const [bleStatus, setBleStatus] = useState('idle')
+    const [bleError,  setBleError]  = useState(null)  // human-readable error string, or null
     const [micStatus, setMicStatus] = useState('idle')
     const [wsStatus,  setWsStatus]  = useState('idle')
     const [latestRR,  setLatestRR]  = useState([])
@@ -45,14 +46,20 @@ export function SensorProvider({ children }) {
         if (bleRef.current) return // already initialised — do not re-request
         const h10 = new BleH10Sensor()
         h10.onStatusChange((status) => {
-            if (status === 'connected')    setBleStatus('connected')
+            if (status === 'connected')    { setBleStatus('connected');    setBleError(null) }
             if (status === 'reconnecting') setBleStatus('reconnecting')
             if (status === 'fallback')     setBleStatus('fallback_rppg')
-            if (status === 'failed')       setBleStatus('failed')
+            if (status === 'failed')       { setBleStatus('failed'); setBleError(h10._lastError ?? 'BLE connection failed') }
         })
         bleRef.current = h10
         setBleStatus('reconnecting')
-        await h10.start()
+        setBleError(null)
+        try {
+            await h10.start()
+        } catch (err) {
+            // bleStatus/'failed' already set via onStatusChange; surface the error message.
+            setBleError(err?.message ?? 'Polar H10 not found — check Bluetooth and pairing')
+        }
     }, [])
 
     const startMic = useCallback(async () => {
@@ -110,7 +117,7 @@ export function SensorProvider({ children }) {
 
     const value = {
         // status
-        bleStatus, micStatus, wsStatus,
+        bleStatus, bleError, micStatus, wsStatus,
         // live data
         latestRR, latestHR, rfBpm, rfLocked,
         // refs (for screens needing direct access)

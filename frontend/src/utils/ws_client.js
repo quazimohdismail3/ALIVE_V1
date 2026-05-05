@@ -24,7 +24,12 @@ export class WSClient {
 
     this.ws.onopen = () => {
       this._reconnectDelay = 1000
-      this.ws.send(JSON.stringify({ type: 'auth', token: this.authToken, timezone: this.timezone }))
+      try {
+        this.ws.send(JSON.stringify({ type: 'auth', token: this.authToken, timezone: this.timezone }))
+      } catch (err) {
+        console.error('[WSClient] auth send failed:', err)
+        this._wsState = 'error'
+      }
     }
 
     this.ws.onmessage = (e) => {
@@ -32,7 +37,9 @@ export class WSClient {
         const msg = JSON.parse(e.data)
         if (msg.type === 'auth_ok') { this.onMessage(msg); return; }
         this.onMessage(msg)
-      } catch (_) {}
+      } catch (_) {
+        console.error('[WSClient] message parse failed, raw:', e.data)
+      }
     }
 
     this.ws.onclose = () => {
@@ -44,7 +51,12 @@ export class WSClient {
 
   send(data) {
     if (this.ws?.readyState === WebSocket.OPEN) {
-      this.ws.send(JSON.stringify(data))
+      try {
+        this.ws.send(JSON.stringify(data))
+      } catch (err) {
+        console.error('[WSClient] send failed:', err)
+        this._wsState = 'error'
+      }
     }
   }
 

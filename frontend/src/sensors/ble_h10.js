@@ -45,7 +45,10 @@ export class BleH10Sensor {
             await this._connect();
         } catch (err) {
             console.warn('[H10] start failed:', err);
+            this._lastError = err?.message ?? String(err);
             this._emit('failed');
+            // Re-throw so callers (e.g. requestBle) can detect the failure.
+            throw err;
         }
     }
 

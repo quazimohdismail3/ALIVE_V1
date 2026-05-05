@@ -33,7 +33,12 @@ export class ContactRPPGSensor {
             await video.play();
             // Wait for actual frame size before reading track capabilities — Android Chrome
             // returns empty caps until the track produces a frame.
-            if (!video.videoWidth) {
+            // Skip when reusing an external stream: the track is already live so caps are
+            // populated immediately, and waiting here only widens the torch-loss window that
+            // opens when Setup detaches the preview srcObject.
+            if (!this._ownsStream) {
+                // External stream: caps already available; re-apply torch immediately.
+            } else if (!video.videoWidth) {
                 await new Promise((res) => {
                     const t = setTimeout(res, 1500);
                     video.addEventListener('loadedmetadata', () => { clearTimeout(t); res(); }, { once: true });

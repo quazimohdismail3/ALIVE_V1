@@ -15,7 +15,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const { session, sensorMode, backendMode, timezone } = cfg ?? {}
   const needsH10 = sensorMode === 2 || sensorMode === 3
 
-  const { requestBle, bleStatus } = useSensorContext()
+  const { requestBle, bleStatus, bleError } = useSensorContext()
 
   // Permission state
   const [permMic, setPermMic]   = useState(false)
@@ -32,6 +32,9 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const [elapsed, setElapsed]     = useState(0)
   const [liveHr, setLiveHr]       = useState(null)
   const [rfBpm, setRfBpm]         = useState(null)
+
+  // BLE error banner — shown when BLE fails at any phase
+  const [bleErrorMsg, setBleErrorMsg] = useState(null)
 
   // Refs
   const wsRef          = useRef(null)
@@ -100,6 +103,21 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
     setPermPending(false)
     setPhase('initialising')
   }, [needsH10, requestBle])
+
+  // â”€â”€â”€ BLE failure detection â”€â”€â”€
+  // If BLE fails (device not found, pairing cancelled, mid-session drop) surface
+  // an error banner. During calibration a 'failed' or 'fallback_rppg' status means
+  // no RR intervals will arrive; show the banner so the user knows to act.
+  useEffect(() => {
+    if (!needsH10) return
+    if (bleStatus === 'failed') {
+      setBleErrorMsg(bleError ?? 'Polar H10 not found — check Bluetooth and pairing')
+    } else if (bleStatus === 'fallback_rppg') {
+      setBleErrorMsg('Polar H10 disconnected — using camera fallback')
+    } else if (bleStatus === 'connected') {
+      setBleErrorMsg(null) // cleared on successful (re)connect
+    }
+  }, [bleStatus, bleError, needsH10])
 
   // â”€â”€â”€ Phase: initialising â”€â”€â”€
   useEffect(() => {
@@ -513,6 +531,20 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
               Skip
             </button>
           </div>
+        </div>
+      )}
+
+      {/* BLE error banner — visible across all phases when H10 is required but failed */}
+      {needsH10 && bleErrorMsg && (
+        <div style={{
+          position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)',
+          maxWidth: 340, width: 'calc(100% - 48px)',
+          background: 'rgba(226,75,74,0.15)', border: '1px solid rgba(226,75,74,0.45)',
+          borderRadius: 12, padding: '12px 16px',
+          color: '#E24B4A', fontSize: 13, textAlign: 'center', lineHeight: 1.5,
+          zIndex: 100, animation: 'ritualFadeIn 300ms ease',
+        }}>
+          {bleErrorMsg}
         </div>
       )}
     </div>
