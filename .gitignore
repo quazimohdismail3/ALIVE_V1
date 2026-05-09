@@ -88,3 +88,4 @@ frontend/e2e/.auth/
 .graphify_python
 .mcp.json
 .code_review_diff.txt
+.gstack/

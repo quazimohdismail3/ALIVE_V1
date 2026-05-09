@@ -1,6 +1,6 @@
 # Mission Alive — Manual Testing Checklist
 **Version:** V2 in progress  
-**Last updated:** 2026-05-10
+**Last updated:** 2026-05-10 (rev 2 — chord engine + stems downloaded)
 
 Use this before every push and after every real H10 session. Work top to bottom.
 Mark ✅ pass / ❌ fail / ⚠️ degraded.
@@ -122,22 +122,24 @@ Mark ✅ pass / ❌ fail / ⚠️ degraded.
 
 | # | Action | Expected |
 |---|--------|----------|
-| 4.25 | Pad audible | Warm chord playing under binaural (triangle wave or stem) |
-| 4.26 | If stems downloaded | Chord replaced by stem (choir/strings) — more natural, less synthetic |
-| 4.27 | If stems NOT downloaded | PolySynth triangle pad still plays (oscillator fallback) |
-| 4.28 | Chord on phase change | New chord plays on every phase transition |
-| 4.29 | Ground layer | Bowl/drone texture audible if stem loaded (low, constant) |
-| 4.30 | Spatial layer | Rain/nature ambient if stem loaded (background texture) |
-| 4.31 | Morning layer | Piano pad audible ONLY during morning_emergence, ACTIVATE+ phases |
+| 4.25 | Chord pad audible | ChordEngine procedural pad plays immediately (always-on, triangle PolySynth + reverb) |
+| 4.26 | Voice leading on phase change | Chord releases over 1.5s, new chord attacks with staggered notes (smooth, not a click) |
+| 4.27 | Organic re-voicing | Every 30s one chord voice breathes in/out — pad sounds alive |
+| 4.28 | Harmonic stem loads | Stems now downloaded — ether_vox_ccby.mp3 loads and takes over; ChordEngine fades to −60dB over 3s |
+| 4.29 | Ground layer | dungeon_drone_cc0.ogg — low drone texture, loops continuously |
+| 4.30 | Breath layer | birds_wind_cc0.ogg — wind/nature background, runs under breath guide |
+| 4.31 | Spatial layer | forest_ambience_cc0.mp3 — forest ambience, calm×0.3 volume |
+| 4.32 | Morning layer | morning_ccby.mp3 — piano pad, ONLY during morning_emergence ACTIVATE+ phases |
+| 4.33 | Stem vs chord fallback | If a stem 404s, that layer stays silent; ChordEngine + oscillator layers continue uninterrupted |
 
 ### 4g. Session End
 
 | # | Action | Expected |
 |---|--------|----------|
-| 4.32 | Duration expires | Session auto-ends, shows summary |
-| 4.33 | Manual exit | Discard sheet appears (swipe/button) |
-| 4.34 | Confirm exit | Returns to Dashboard |
-| 4.35 | Session saved | Appears in "Recent sessions" on next Dashboard load |
+| 4.34 | Duration expires | Session auto-ends, shows summary |
+| 4.35 | Manual exit | Discard sheet appears (swipe/button) |
+| 4.36 | Confirm exit | Returns to Dashboard |
+| 4.37 | Session saved | Appears in "Recent sessions" on next Dashboard load |
 
 ---
 
@@ -187,7 +189,8 @@ These are known placeholders that require real session data before they can be s
 | **α direction threshold** | 0.4 (arousal+valence dist) | ⚠️ Heuristic | Log `_totalDist` per session. If "toward" fires too often → raise threshold. If never fires → lower. Tune after V2.1–V2.3. |
 | **ANS classifier thresholds** | Defaults from `backend/ans_classifier.py` | ⚠️ Sim-tuned | Validate against real H10 RMSSD. RMSSD avg ~38ms real vs ~65ms sim — classifiers may be miscalibrated. Recheck zone boundaries after V2.2. |
 | **State confirmation gate** | 8s stress / 25s calm | ⚠️ Literature value | Reasonable starting point (Lehrer 2010). Adjust if phase transitions feel jerky (lower) or unresponsive (raise). |
-| **Stem layer volumes** | Ground: coherence×calm×0.7, Spatial: calm×0.3 | ⚠️ First-listen estimate | Do a full 25-min session with headphones and note if any layer is too loud/soft. Adjust multipliers in `_applyStemPhaseVolumes()` in `session_audio.js`. |
+| **Stem layer volumes** | Ground: coherence×calm×0.7, Spatial: calm×0.3 | ⚠️ First-listen estimate | Stems now loaded (real audio). Do a full 25-min session and note if any layer is too loud/soft. Adjust multipliers in `_applyStemPhaseVolumes()` in `session_audio.js`. |
+| **ChordEngine volume** | −24dB base, presence-driven −30→−18dB ramp | ⚠️ First-listen estimate | ChordEngine fades out when harmonic stem loads. If transition sounds abrupt, adjust `fadeOut(ms)` in `chord_engine.js`. |
 | **Binaural carrier frequencies** | 174Hz / 256Hz / 432Hz | ⚠️ Literature-based | Solfeggio frequencies (no strong RCT evidence). If users report discomfort, try 200Hz / 300Hz / 440Hz. Tune with user feedback. |
 | **RMSSD artifact rejection** | >20% from local median | ⚠️ Standard value | Validate with real H10 ectopic beats. If too aggressive → losing valid beats. If too loose → artifacts contaminate RMSSD. |
 | **Breath guide I:E ratio** | 40:60 | ✅ Clinical literature | Well-established for RSA. Do not change unless there is clinical reason. |
@@ -209,7 +212,7 @@ When V2.1–V2.3 are complete (3+ real H10 sessions):
 
 ## 10. Known Limitations (Not Bugs)
 
-- **Stems play via oscillator fallback** until `public/stems/{layer}/*.mp3` files are downloaded and Freesound full-quality downloads are obtained (requires free Freesound account).
+- **Stems are downloaded** — all 5 layers now have real audio files in `public/stems/{layer}/`. Run `node scripts/download_stems.js` to re-download if files are deleted. ChordEngine covers harmonic layer if stem fails.
 - **No stem tuning** to specific carrier frequencies (174/256/432Hz) — bowl recordings are at natural pitch, not frequency-matched. Use for texture only, not entrainment.
 - **iOS audio unlock**: iOS requires a user tap before Web Audio starts. Session begins correctly after the "Begin Session" button tap.
 - **WakeLock on iOS**: Not supported in iOS ≤15. Screen may dim during long sessions.
