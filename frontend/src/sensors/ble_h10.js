@@ -6,6 +6,8 @@ export class BleH10Sensor {
         this.accelBuffer = [];
         this._device = null;
         this._server = null;
+        this._char = null;
+        this._boundOnData = null; // stored so removeEventListener works on reconnect
         this._connected = false;
         this._stopped = false;
         this._reconnectAttempt = 0;
@@ -61,10 +63,15 @@ export class BleH10Sensor {
         const service = await server.getPrimaryService('heart_rate');
         const char = await service.getCharacteristic('heart_rate_measurement');
         await char.startNotifications();
+        // Remove old listener before attaching new one — each reconnect gets a new char object
+        // but without removeEventListener the old anonymous handler leaks, causing _onData to
+        // fire N+1 times per beat after N reconnects, silently multiplying all RR values.
+        if (this._char && this._boundOnData) {
+            try { this._char.removeEventListener('characteristicvaluechanged', this._boundOnData); } catch (_) {}
+        }
         this._char = char;
-        // Always re-attach on each connect — old char is dead after GATT disconnect.
-        // The _listenerBound guard caused RR notifications to die permanently after reconnect.
-        char.addEventListener('characteristicvaluechanged', (e) => this._onData(e.target.value));
+        this._boundOnData = (e) => this._onData(e.target.value);
+        char.addEventListener('characteristicvaluechanged', this._boundOnData);
         this._connected = true;
         this._reconnectAttempt = 0;
         this._emit('connected');

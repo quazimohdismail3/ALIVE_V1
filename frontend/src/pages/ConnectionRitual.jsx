@@ -47,7 +47,28 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
 
   // â”€â”€â”€ handleMsg defined with useCallback so it's stable across the cal useEffect â”€â”€â”€
   const handleMsg = useCallback((msg) => {
-    if (msg.type === 'auth_ok') return
+    if (msg.type === 'auth_ok') {
+      // Send cal_start only after auth_ok confirmed — prevents race where cal_start
+      // lands at backend before auth processing completes (causes backend to enter
+      // session phase instead of cal phase, freezing UI permanently).
+      const ws = wsRef.current
+      if (!ws || sendIvRef.current) return
+      ws.send({ type: 'cal_start' })
+      sendIvRef.current = setInterval(() => {
+        const fusion = fusionRef.current
+        if (!fusion) return
+        const r = fusion.getReading?.()
+        if (!r) return
+        const rrs = bleRef.current?.drainNew?.() ?? []
+        if (rrs.length > 0) {
+          // Send resp_amp only when mic is present (non-zero) — sending 0 fills
+          // the backend's _resp_buffer with zeros, making coherence always 0.0.
+          const respAmp = r.resp_amp || null
+          rrs.forEach(rr => ws.send(respAmp ? { rr, resp_amp: respAmp } : { rr }))
+        }
+      }, 500)
+      return
+    }
     if (msg.cal === true) {
       gotCalFrameRef.current = true
       if (typeof msg.target_bpm === 'number')       setTargetBpm(msg.target_bpm)
@@ -185,22 +206,9 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
         if (!ws.ws) { setTimeout(bindLifecycle, 20); return }
 
         ws.ws.addEventListener('open', () => {
-          ws.send({ type: 'cal_start' })
-
-          sendIvRef.current = setInterval(() => {
-            const fusion = fusionRef.current
-            if (!fusion) { ws.send({ resp_amp: 0 }); return }
-            const r = fusion.getReading?.()
-            if (!r) { ws.send({ resp_amp: 0 }); return }
-            // drainNew() returns only RRs since the last call — avoids resending
-            // stale buffer entries when H10 is disconnected (slice(-5) bug).
-            const rrs = bleRef.current?.drainNew?.() ?? []
-            if (rrs.length > 0) {
-              rrs.forEach(rr => ws.send({ rr, resp_amp: r.resp_amp ?? 0 }))
-            } else {
-              ws.send({ resp_amp: r.resp_amp ?? 0 })
-            }
-          }, 500)
+          // cal_start + send interval are started in handleMsg on auth_ok instead.
+          // Sending cal_start here (on 'open') caused a race: both auth and cal_start
+          // arrived at the backend before it could process auth, breaking cal detection.
         })
 
         ws.ws.addEventListener('error', (e) => {

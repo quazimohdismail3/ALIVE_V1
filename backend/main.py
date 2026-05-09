@@ -208,7 +208,7 @@ async def ws_session(
     cal_active = False
     pending_first_msg: dict | None = None
     try:
-        first = await asyncio.wait_for(websocket.receive_json(), timeout=2.0)
+        first = await asyncio.wait_for(websocket.receive_json(), timeout=8.0)
         if first.get("type") == "cal_start":
             cal_active = True
         elif first.get("type") == "session_start":
@@ -279,8 +279,8 @@ async def ws_session(
     # CALIBRATION PHASE (if cal_active): adaptive RF sweep
     # ============================================================
     if cal_active:
-        CAL_DWELL_S = 90.0    # dwell at each candidate frequency (minimum for RSA estimation)
-        CAL_CAP_S = 120.0     # absolute timeout
+        CAL_DWELL_S = 25.0    # dwell at each candidate frequency — reduced so ≥2 observations fit in cap
+        CAL_CAP_S = 50.0      # absolute timeout — must stay below Railway proxy idle timeout (~55s)
         cal_start_t = time.time()
         target_bpm = rf_optimizer.f0
         dwell_start = cal_start_t
@@ -313,9 +313,13 @@ async def ws_session(
                                 _rr_buffer.append(r.accepted)
                         if "resp_amp" in msg:
                             try:
-                                _resp_buffer.append(float(msg["resp_amp"]))
-                                if len(_resp_buffer) > 500:
-                                    _resp_buffer[:-500] = []
+                                v = float(msg["resp_amp"])
+                                # Skip zeros — in H10 mode mic is absent, frontend sends 0.
+                                # Zero-filled _resp_buffer makes coherence always 0.0.
+                                if v > 0:
+                                    _resp_buffer.append(v)
+                                    if len(_resp_buffer) > 500:
+                                        _resp_buffer[:-500] = []
                             except (TypeError, ValueError):
                                 pass
                         if msg.get("cmd") == "discard":
