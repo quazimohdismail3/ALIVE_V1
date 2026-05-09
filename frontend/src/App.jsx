@@ -17,7 +17,7 @@ import Insight from './pages/Insight.jsx'
   */
 function AppRoutes() {
   const { user, loading } = useAuth()
-  const { startMic } = useSensorContext()
+  const { startMic, requestBle, bleStatus } = useSensorContext()
   const [screen, setScreen]       = useState('landing')
   const [cfg, setCfg]             = useState(null)
   const [insightData, setInsightData] = useState(null)
@@ -141,6 +141,8 @@ function AppRoutes() {
         <Dashboard
           hasCalibrated={profile?.calibration_done === true}
           savedRfBpm={profile?.rf_bpm ?? 5.5}
+          bleStatus={bleStatus}
+          onConnectH10={requestBle}
           onStart={(c) => { setCfg({ ...c, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }); setScreen('connection') }}
         />
       )

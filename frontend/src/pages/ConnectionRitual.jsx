@@ -15,7 +15,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const { session, sensorMode, backendMode, timezone } = cfg ?? {}
   const needsH10 = sensorMode === 2 || sensorMode === 3
 
-  const { requestBle, bleStatus, bleError } = useSensorContext()
+  const { requestBle, bleStatus, bleError, bleRef } = useSensorContext()
 
   // Permission state
   const [permMic, setPermMic]   = useState(false)
@@ -83,11 +83,13 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
       )
     }
 
-    tasks.push(
-      navigator.mediaDevices.getUserMedia({ audio: true })
-        .then(() => setPermMic(true))
-        .catch((e) => { console.warn('[ConnectionRitual] mic denied:', e) })
-    )
+    if (!needsH10) {
+      tasks.push(
+        navigator.mediaDevices.getUserMedia({ audio: true })
+          .then(() => setPermMic(true))
+          .catch((e) => { console.warn('[ConnectionRitual] mic denied:', e) })
+      )
+    }
 
     tasks.push(
       navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } })
@@ -128,7 +130,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
 
     async function init() {
       try {
-        const fusion = new SensorFusion(sensorMode ?? 1)
+        const fusion = new SensorFusion(sensorMode ?? 1, { externalBle: bleRef.current ?? null })
         await fusion.start()
         if (cancelled) { fusion.stop?.(); return }
         fusionRef.current = fusion
@@ -326,7 +328,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
 
           {/* Permission checklist */}
           <div style={{ width: '100%', maxWidth: 340, marginBottom: 40, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <PermRow label="Microphone" status="unchecked" note="Breath coherence" />
+            {!needsH10 && <PermRow label="Microphone" status="unchecked" note="Breath coherence" />}
             <PermRow label="Camera" status="unchecked" note="Heart rate (rPPG)" />
             {needsH10 && (
               <PermRow label="Polar H10" status="unchecked" note="BLE heart sensor" />
@@ -361,11 +363,13 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
           </p>
 
           <div style={{ width: '100%', maxWidth: 340, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            <PermRow
-              label="Microphone"
-              status={permMic ? 'done' : (permPending ? 'pending' : 'unchecked')}
-              note="Breath coherence"
-            />
+            {!needsH10 && (
+              <PermRow
+                label="Microphone"
+                status={permMic ? 'done' : (permPending ? 'pending' : 'unchecked')}
+                note="Breath coherence"
+              />
+            )}
             <PermRow
               label="Camera"
               status={permCam ? 'done' : (permPending ? 'pending' : 'unchecked')}

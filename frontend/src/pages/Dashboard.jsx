@@ -91,9 +91,12 @@ function RecommendationCard({ rec }) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm = 5.5 }) {
+export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm = 5.5, bleStatus: bleStatusProp, onConnectH10 }) {
   const { user, signOut } = useAuth()
-  const { latestRR, bleStatus, requestBle } = useSensorContext()
+  const { latestRR, bleStatus: bleStatusCtx, requestBle } = useSensorContext()
+  // Prefer prop (passed from App-level gesture handler) but fall back to context
+  const bleStatus = bleStatusProp ?? bleStatusCtx
+  const handleConnectH10 = onConnectH10 ?? requestBle
 
   const SESSION_LIST = getSessionList()
   const DEFAULT_SESSION_ID = SESSION_LIST[0].id
@@ -191,9 +194,65 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
         </div>
 
         {/* Live sensor status */}
-        <div style={{ marginBottom: 32 }}>
+        <div style={{ marginBottom: 16 }}>
           <SensorStatusBar rfLocked={null} sqi={null} />
         </div>
+
+        {/* H10 persistent connection bar */}
+        {bleStatus !== 'connected' && (
+          <div style={{
+            margin: '0 0 16px',
+            padding: '12px 16px',
+            background: 'rgba(255,255,255,0.03)',
+            border: '1px solid rgba(255,255,255,0.08)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            gap: 12,
+          }}>
+            <div>
+              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Polar H10</div>
+              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
+                {bleStatus === 'reconnecting' ? 'Connecting…' :
+                 bleStatus === 'fallback_rppg' ? 'Disconnected' :
+                 bleStatus === 'failed' ? 'Not found' : 'Not connected'}
+              </div>
+            </div>
+            <button
+              onClick={handleConnectH10}
+              disabled={bleStatus === 'reconnecting'}
+              style={{
+                background: bleStatus === 'reconnecting' ? 'rgba(124,111,247,0.1)' : 'rgba(124,111,247,0.15)',
+                border: '1px solid rgba(124,111,247,0.4)',
+                borderRadius: 8,
+                padding: '7px 14px',
+                color: '#7C6FF7',
+                fontSize: 13,
+                fontWeight: 600,
+                cursor: bleStatus === 'reconnecting' ? 'not-allowed' : 'pointer',
+                flexShrink: 0,
+              }}
+            >
+              {bleStatus === 'reconnecting' ? 'Connecting…' : 'Connect'}
+            </button>
+          </div>
+        )}
+        {bleStatus === 'connected' && (
+          <div style={{
+            margin: '0 0 16px',
+            padding: '10px 16px',
+            background: 'rgba(0,208,132,0.06)',
+            border: '1px solid rgba(0,208,132,0.25)',
+            borderRadius: 12,
+            display: 'flex',
+            alignItems: 'center',
+            gap: 10,
+          }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00D084', boxShadow: '0 0 8px #00D084', flexShrink: 0 }} />
+            <div style={{ fontSize: 13, color: '#00D084', fontWeight: 600 }}>Polar H10 connected</div>
+          </div>
+        )}
 
         {/* Recommendations */}
         {recs.length > 0 && (
@@ -321,7 +380,7 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
         {/* Connect H10 CTA */}
         {(modeKey === 'h10' || modeKey === 'combined') && bleStatus !== 'connected' && (
           <button
-            onClick={requestBle}
+            onClick={handleConnectH10}
             disabled={bleStatus === 'reconnecting'}
             style={{
               width: '100%', background: 'transparent', color: '#7C6FF7',

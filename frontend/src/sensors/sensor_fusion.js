@@ -8,8 +8,9 @@ import { BreathMicSensor } from './breath_mic.js';
 import { MotionGate } from './motion_gate.js';
 
 export class SensorFusion {
-    constructor(mode) {
+    constructor(mode, { externalBle = null } = {}) {
         this.mode = mode;
+        this._externalBle = externalBle;
         this.sensors = {};
         this.motionGate = new MotionGate();
     }
@@ -21,17 +22,22 @@ export class SensorFusion {
         try {
             // BLE H10 — modes 2 and 3
             if (this.mode === 2 || this.mode === 3) {
-                this.sensors.h10 = new BleH10Sensor();
-                await this.sensors.h10.start();
+                if (this._externalBle) {
+                    // Use the sensor already connected via user gesture in SensorContext
+                    this.sensors.h10 = this._externalBle;
+                } else {
+                    this.sensors.h10 = new BleH10Sensor();
+                    await this.sensors.h10.start();
+                }
             }
             // Rear-cam fingertip rPPG — mode 1 only (rear cam + torch can't coexist with front cam)
             if (this.mode === 1) {
                 this.sensors.rppg = new ContactRPPGSensor();
                 await this.sensors.rppg.start(externalRearStream);
+                // Mic — mode 1 only (RF from H10 RSA analysis in modes 2/3; mic not needed)
+                this.sensors.mic = new BreathMicSensor();
+                await this.sensors.mic.start();
             }
-            // Mic — all modes (resp signal for RF coherence)
-            this.sensors.mic = new BreathMicSensor();
-            await this.sensors.mic.start();
             // Front-cam stack — combined mode only (single shared stream for face + pose)
             if (this.mode === 3) {
                 try {

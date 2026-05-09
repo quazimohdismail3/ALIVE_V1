@@ -321,9 +321,7 @@ async def ws_session(
                 # End of dwell → observe and pick next target
                 dwell_elapsed = time.time() - dwell_start
                 if dwell_elapsed >= CAL_DWELL_S and len(_rr_buffer) >= 15:
-                    _resp_arr = (
-                        np.array(_resp_buffer[-200:]) if _resp_buffer else np.zeros(50)
-                    )
+                    _resp_arr = rf_optimizer.get_resp_signal(_resp_buffer)
                     coherence_so_far = compute_coherence_at_frequency(
                         _rr_buffer[-60:], _resp_arr, target_bpm
                     )
