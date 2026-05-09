@@ -115,9 +115,11 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
     if (bleStatus === 'failed') {
       setBleErrorMsg(bleError ?? 'Polar H10 not found — check Bluetooth and pairing')
     } else if (bleStatus === 'fallback_rppg') {
-      setBleErrorMsg('Polar H10 disconnected — using camera fallback')
+      setBleErrorMsg('Polar H10 disconnected — retrying automatically…')
+    } else if (bleStatus === 'reconnecting') {
+      setBleErrorMsg('Polar H10 reconnecting…')
     } else if (bleStatus === 'connected') {
-      setBleErrorMsg(null) // cleared on successful (re)connect
+      setBleErrorMsg(null)
     }
   }, [bleStatus, bleError, needsH10])
 

@@ -42,8 +42,20 @@ export function SensorProvider({ children }) {
 
     // requestBle MUST be called from a user gesture (button click).
     // Calling from useEffect will silently fail (Web Bluetooth requirement).
+    // Safe to call repeatedly: no-op if sensor is active/reconnecting.
+    // If previous attempt hard-failed (user cancelled picker), clears old sensor and retries.
+    const bleStatusRef = useRef('idle')
+    useEffect(() => { bleStatusRef.current = bleStatus }, [bleStatus])
+
     const requestBle = useCallback(async () => {
-        if (bleRef.current) return // already initialised — do not re-request
+        const currentStatus = bleStatusRef.current
+        // Active or reconnecting — don't duplicate
+        if (bleRef.current && currentStatus !== 'failed') return
+        // Hard-failed (picker cancelled / device not found) — clean up and allow fresh request
+        if (bleRef.current && currentStatus === 'failed') {
+            try { bleRef.current.stop() } catch (_) {}
+            bleRef.current = null
+        }
         const h10 = new BleH10Sensor()
         h10.onStatusChange((status) => {
             if (status === 'connected')    { setBleStatus('connected');    setBleError(null) }
@@ -57,7 +69,6 @@ export function SensorProvider({ children }) {
         try {
             await h10.start()
         } catch (err) {
-            // bleStatus/'failed' already set via onStatusChange; surface the error message.
             setBleError(err?.message ?? 'Polar H10 not found — check Bluetooth and pairing')
         }
     }, [])

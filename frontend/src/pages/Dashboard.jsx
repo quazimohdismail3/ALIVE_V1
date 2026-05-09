@@ -214,27 +214,26 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
             <div>
               <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Polar H10</div>
               <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
-                {bleStatus === 'reconnecting' ? 'Connecting…' :
-                 bleStatus === 'fallback_rppg' ? 'Disconnected' :
-                 bleStatus === 'failed' ? 'Not found' : 'Not connected'}
+                {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting…' :
+                 bleStatus === 'failed' ? 'Not found — tap to retry' : 'Not connected'}
               </div>
             </div>
             <button
               onClick={handleConnectH10}
-              disabled={bleStatus === 'reconnecting'}
+              disabled={bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg'}
               style={{
-                background: bleStatus === 'reconnecting' ? 'rgba(124,111,247,0.1)' : 'rgba(124,111,247,0.15)',
+                background: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'rgba(124,111,247,0.1)' : 'rgba(124,111,247,0.15)',
                 border: '1px solid rgba(124,111,247,0.4)',
                 borderRadius: 8,
                 padding: '7px 14px',
                 color: '#7C6FF7',
                 fontSize: 13,
                 fontWeight: 600,
-                cursor: bleStatus === 'reconnecting' ? 'not-allowed' : 'pointer',
+                cursor: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'not-allowed' : 'pointer',
                 flexShrink: 0,
               }}
             >
-              {bleStatus === 'reconnecting' ? 'Connecting…' : 'Connect'}
+              {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting…' : 'Connect'}
             </button>
           </div>
         )}
@@ -381,15 +380,15 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
         {(modeKey === 'h10' || modeKey === 'combined') && bleStatus !== 'connected' && (
           <button
             onClick={handleConnectH10}
-            disabled={bleStatus === 'reconnecting'}
+            disabled={bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg'}
             style={{
               width: '100%', background: 'transparent', color: '#7C6FF7',
               border: '1.5px solid rgba(124,111,247,0.5)', borderRadius: 12, padding: '12px',
-              fontWeight: 600, fontSize: 14, cursor: bleStatus === 'reconnecting' ? 'not-allowed' : 'pointer',
-              marginBottom: 12, opacity: bleStatus === 'reconnecting' ? 0.6 : 1,
+              fontWeight: 600, fontSize: 14, cursor: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'not-allowed' : 'pointer',
+              marginBottom: 12, opacity: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 0.6 : 1,
             }}
           >
-            {bleStatus === 'reconnecting' ? 'Connecting to H10…' : 'Connect Polar H10'}
+            {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting to H10…' : 'Connect Polar H10'}
           </button>
         )}
 
