@@ -24,7 +24,7 @@ import { useSensorContext } from '../context/SensorContext.jsx';
 export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = false }) {
   const { session, backendMode, timezone, fusion: existingFusion, sensorMode } = cfg ?? {};
   const needsH10 = sensorMode === 2 || sensorMode === 3;
-  const { bleStatus, bleError } = useSensorContext();
+  const { bleStatus, bleError, bleRef } = useSensorContext();
 
   const [targetBpm, setTargetBpm]         = useState(5.5);
   const [coherence, setCoherence]         = useState(0);
@@ -94,7 +94,7 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
           sendIvRef.current = setInterval(() => {
             const r = fusion.getReading?.();
             if (!r) { ws.send({ resp_amp: 0 }); return; }
-            const rrs = Array.isArray(r.rr?.rr_ms) ? r.rr.rr_ms.slice(-5) : [];
+            const rrs = bleRef.current?.drainNew?.() ?? [];
             if (rrs.length > 0) {
               rrs.forEach(rr => ws.send({ rr, resp_amp: r.resp_amp ?? 0 }));
             } else {

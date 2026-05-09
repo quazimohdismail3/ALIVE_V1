@@ -16,6 +16,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const needsH10 = sensorMode === 2 || sensorMode === 3
 
   const { requestBle, bleStatus, bleError, bleRef } = useSensorContext()
+  const calDoneRef = useRef(false) // set true on cal_done so WS close doesn't surface error
 
   // Permission state
   const [permMic, setPermMic]   = useState(false)
@@ -58,6 +59,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
     if (msg.cal_done === true) {
       const bpm    = msg.rf_bpm ?? 5.5
       const locked = !!msg.rf_locked
+      calDoneRef.current = true
       setRfBpm(bpm)
       setPhase('locked')
       clearInterval(sendIvRef.current)
@@ -190,7 +192,9 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
             if (!fusion) { ws.send({ resp_amp: 0 }); return }
             const r = fusion.getReading?.()
             if (!r) { ws.send({ resp_amp: 0 }); return }
-            const rrs = Array.isArray(r.rr?.rr_ms) ? r.rr.rr_ms.slice(-5) : []
+            // drainNew() returns only RRs since the last call — avoids resending
+            // stale buffer entries when H10 is disconnected (slice(-5) bug).
+            const rrs = bleRef.current?.drainNew?.() ?? []
             if (rrs.length > 0) {
               rrs.forEach(rr => ws.send({ rr, resp_amp: r.resp_amp ?? 0 }))
             } else {
@@ -207,6 +211,8 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
         ws.ws.addEventListener('close', (e) => {
           console.warn('[ConnectionRitual] WS closed code=', e.code)
           clearInterval(sendIvRef.current)
+          // Surface WS drop as error so user can retry — silent freeze was the old behavior.
+          if (!calDoneRef.current && !cancelled) setPhase('error')
         })
       }
       bindLifecycle()

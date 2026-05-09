@@ -2,12 +2,12 @@
 export class BleH10Sensor {
     constructor() {
         this.rrBuffer = [];
+        this._rrQueue = []; // new RRs since last drainNew() — for WS sending
         this.accelBuffer = [];
         this._device = null;
         this._server = null;
         this._connected = false;
         this._stopped = false;
-        this._listenerBound = false;
         this._reconnectAttempt = 0;
         this._onStatusChange = null; // (status: 'connected'|'reconnecting'|'failed'|'fallback') => void
     }
@@ -62,10 +62,9 @@ export class BleH10Sensor {
         const char = await service.getCharacteristic('heart_rate_measurement');
         await char.startNotifications();
         this._char = char;
-        if (!this._listenerBound) {
-            char.addEventListener('characteristicvaluechanged', (e) => this._onData(e.target.value));
-            this._listenerBound = true;
-        }
+        // Always re-attach on each connect — old char is dead after GATT disconnect.
+        // The _listenerBound guard caused RR notifications to die permanently after reconnect.
+        char.addEventListener('characteristicvaluechanged', (e) => this._onData(e.target.value));
         this._connected = true;
         this._reconnectAttempt = 0;
         this._emit('connected');
@@ -112,6 +111,7 @@ export class BleH10Sensor {
             if (rr_ms > 300 && rr_ms < 2000) {
                 this.rrBuffer.push(rr_ms);
                 if (this.rrBuffer.length > 200) this.rrBuffer.shift();
+                this._rrQueue.push(rr_ms);
             }
             offset += 2;
         }
@@ -121,4 +121,7 @@ export class BleH10Sensor {
     getReconnectAttempt() { return this._reconnectAttempt; }
     getLatestRR() { return { rr_ms: [...this.rrBuffer], confidence: 0.95, source: 'h10' }; }
     getLatestAccel() { return { signal: [...this.accelBuffer], fs: 25.0 }; }
+    // Returns new RR intervals since last call and clears the queue.
+    // Use this in send intervals instead of getLatestRR().slice(-N) to avoid sending duplicates.
+    drainNew() { return this._rrQueue.splice(0); }
 }
