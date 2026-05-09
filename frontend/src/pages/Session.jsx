@@ -222,6 +222,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   async function endSession(discard = false) {
     if (discard) {
       wsRef.current?.send({ cmd: 'discard' });
+      await new Promise(r => setTimeout(r, 250)); // give backend time to receive discard before WS closes
       cleanup(false);
       onDiscard();
       return;

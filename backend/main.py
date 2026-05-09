@@ -698,5 +698,29 @@ async def ws_session(
                         "discarded": False,
                     },
                 )
+        elif discard_flag and sid and os.environ.get("DATABASE_URL"):
+            try:
+                await db.finish_session(
+                    session_id=sid,
+                    outcome={
+                        "ended_at": datetime.now(timezone.utc).isoformat(),
+                        "duration_s": int(time.time() - t_start),
+                        "peak_vs": 0,
+                        "final_vs": 0,
+                        "skill_transfer_score": None,
+                        "rf_locked": rf_locked,
+                        "rf_bpm": rf_bpm,
+                        "rf_lock_epoch_s": None,
+                        "arc_phases_completed": [],
+                        "circadian_phase": circadian_ctx.get("phase"),
+                        "circadian_fit_score": circadian_ctx.get("fit_score"),
+                        "rr_total": len(_rr_buffer),
+                        "rr_rejected": flt.rejected_count if hasattr(flt, "rejected_count") else None,
+                        "sqi_mean": None,
+                        "discarded": True,
+                    },
+                )
+            except Exception:
+                pass  # best-effort cleanup — orphan row is preferable to a crash
         # WS stays open after session_end — SensorContext reuses it.
         pass

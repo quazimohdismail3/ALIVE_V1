@@ -17,7 +17,7 @@ import Insight from './pages/Insight.jsx'
   */
 function AppRoutes() {
   const { user, loading } = useAuth()
-  const { startMic, requestBle, bleStatus } = useSensorContext()
+  const { requestBle, bleStatus } = useSensorContext()
   const [screen, setScreen]       = useState('landing')
   const [cfg, setCfg]             = useState(null)
   const [insightData, setInsightData] = useState(null)
@@ -36,8 +36,6 @@ function AppRoutes() {
         if (!cancelled) {
           setProfile(p)
           setProfileErr(null)
-          // Start mic once we have a confirmed user â€” no gesture required for mic
-          startMic()
         }
       } catch (e) {
         console.error('profile fetch failed', e)
@@ -45,7 +43,7 @@ function AppRoutes() {
       }
     })()
     return () => { cancelled = true }
-  }, [user, profileRetry, startMic])
+  }, [user, profileRetry])
 
   // First-time users must go through Setup (to init sensors/fusion) before Calibration
   useEffect(() => {

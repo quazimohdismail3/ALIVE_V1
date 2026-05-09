@@ -4,6 +4,7 @@ import { supabase } from '../lib/supabase.js'
 import { SensorFusion } from '../sensors/sensor_fusion.js'
 import { patchProfileCalibration } from '../lib/api.js'
 import { useSensorContext } from '../context/SensorContext.jsx'
+import { useWakeLock } from '../hooks/useWakeLock.js'
 
 /**
  * ConnectionRitual â€” unified permissions + sensor init + RF calibration ceremony.
@@ -14,8 +15,10 @@ import { useSensorContext } from '../context/SensorContext.jsx'
 export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = false }) {
   const { session, sensorMode, backendMode, timezone } = cfg ?? {}
   const needsH10 = sensorMode === 2 || sensorMode === 3
+  const needsMic  = sensorMode === 1 || sensorMode === 3  // phone in the loop
 
-  const { requestBle, bleStatus, bleError, bleRef } = useSensorContext()
+  const { requestBle, bleStatus, bleError, bleRef, startMic } = useSensorContext()
+  const { acquire: acquireWakeLock, release: releaseWakeLock } = useWakeLock()
   const calDoneRef = useRef(false) // set true on cal_done so WS close doesn't surface error
 
   // Permission state
@@ -42,8 +45,9 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const fusionRef      = useRef(null)
   const sendIvRef      = useRef(null)
   const gotCalFrameRef = useRef(false)
-  const startedCalRef  = useRef(false)
-  const startedInitRef = useRef(false)
+  const startedCalRef    = useRef(false)
+  const startedInitRef   = useRef(false)
+  const autoRetryDoneRef = useRef(false)
 
   // â”€â”€â”€ handleMsg defined with useCallback so it's stable across the cal useEffect â”€â”€â”€
   const handleMsg = useCallback((msg) => {
@@ -65,6 +69,9 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
           // the backend's _resp_buffer with zeros, making coherence always 0.0.
           const respAmp = r.resp_amp || null
           rrs.forEach(rr => ws.send(respAmp ? { rr, resp_amp: respAmp } : { rr }))
+        } else if (r.resp_amp > 0) {
+          // No RR data but have respiration — keepalive so backend maintains coherence.
+          ws.send({ resp_amp: r.resp_amp })
         }
       }, 500)
       return
@@ -75,7 +82,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
       if (typeof msg.coherence_so_far === 'number') setCoherence(msg.coherence_so_far)
       if (typeof msg.dwell_remaining === 'number')  setDwellRem(Math.round(msg.dwell_remaining))
       if (typeof msg.elapsed === 'number')          setElapsed(msg.elapsed)
-      if (msg.hrv?.hr != null)                      setLiveHr(msg.hrv.hr)
+      if (msg.hrv?.hr != null && msg.hrv.hr > 0)   setLiveHr(msg.hrv.hr)
     }
     if (msg.cal_done === true) {
       const bpm    = msg.rf_bpm ?? 5.5
@@ -106,10 +113,10 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
       )
     }
 
-    if (!needsH10) {
+    if (needsMic) {
       tasks.push(
         navigator.mediaDevices.getUserMedia({ audio: true })
-          .then(() => setPermMic(true))
+          .then(() => { setPermMic(true); return startMic().catch(() => {}) })
           .catch((e) => { console.warn('[ConnectionRitual] mic denied:', e) })
       )
     }
@@ -127,7 +134,14 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
     await Promise.allSettled(tasks)
     setPermPending(false)
     setPhase('initialising')
-  }, [needsH10, requestBle])
+  }, [needsH10, needsMic, requestBle, startMic])
+
+  // â”€â”€â”€ Wake lock: keep screen on during calibration (prevents Android BLE throttle at ~22s) â”€â”€â”€
+  useEffect(() => {
+    if (phase !== 'calibrating') return
+    acquireWakeLock().catch(() => {})
+    return () => { releaseWakeLock() }
+  }, [phase])
 
   // â”€â”€â”€ BLE failure detection â”€â”€â”€
   // If BLE fails (device not found, pairing cancelled, mid-session drop) surface
@@ -219,8 +233,17 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
         ws.ws.addEventListener('close', (e) => {
           console.warn('[ConnectionRitual] WS closed code=', e.code)
           clearInterval(sendIvRef.current)
-          // Surface WS drop as error so user can retry — silent freeze was the old behavior.
-          if (!calDoneRef.current && !cancelled) setPhase('error')
+          if (!calDoneRef.current && !cancelled) {
+            // Auto-retry once before surfacing error to user.
+            if (!autoRetryDoneRef.current) {
+              autoRetryDoneRef.current = true
+              startedCalRef.current = false
+              setPhase('error')  // momentary reset
+              setTimeout(() => setPhase('calibrating'), 50)  // re-trigger cal useEffect
+            } else {
+              setPhase('error')
+            }
+          }
         })
       }
       bindLifecycle()
@@ -256,9 +279,10 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
 
   // â”€â”€â”€ Retry from error â”€â”€â”€
   function handleRetry() {
-    startedInitRef.current = false
-    startedCalRef.current  = false
-    gotCalFrameRef.current = false
+    startedInitRef.current  = false
+    startedCalRef.current   = false
+    gotCalFrameRef.current  = false
+    autoRetryDoneRef.current = false
     setPermMic(false)
     setPermCam(false)
     setTargetBpm(5.5)
@@ -371,7 +395,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
 
           {/* Permission checklist */}
           <div style={{ width: '100%', maxWidth: 340, marginBottom: 40, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {!needsH10 && <PermRow label="Microphone" status="unchecked" note="Breath coherence" />}
+            {needsMic && <PermRow label="Microphone" status="unchecked" note="Breath coherence" />}
             <PermRow label="Camera" status="unchecked" note="Heart rate (rPPG)" />
             {needsH10 && (
               <PermRow label="Polar H10" status="unchecked" note="BLE heart sensor" />
@@ -406,7 +430,7 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
           </p>
 
           <div style={{ width: '100%', maxWidth: 340, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
-            {!needsH10 && (
+            {needsMic && (
               <PermRow
                 label="Microphone"
                 status={permMic ? 'done' : (permPending ? 'pending' : 'unchecked')}
