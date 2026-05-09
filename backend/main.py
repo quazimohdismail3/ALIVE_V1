@@ -65,9 +65,14 @@ app.include_router(baseline_router)
 from backend.api.sessions import router as sessions_router
 app.include_router(sessions_router)
 
+_FRONTEND_ORIGINS = [o.strip() for o in os.environ.get(
+    "FRONTEND_URL",
+    "https://mission-alive.vercel.app,http://localhost:5173,http://localhost:4173"
+).split(",") if o.strip()]
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=_FRONTEND_ORIGINS,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

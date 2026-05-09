@@ -9,9 +9,15 @@ from backend.baseline_engine import recompute_baseline_from_sessions
 router = APIRouter()
 
 
+def _require_pool() -> None:
+    if db._pool is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=503, detail="Database not configured")
+
+
 @router.get("/api/baseline")
-async def get_baseline(user=Depends(get_current_user)):
-    user_id = user["sub"]
+async def get_baseline(user_id: str = Depends(get_current_user)):
+    _require_pool()
     row = await db.get_baseline(user_id)
     if row is None:
         # Recompute on demand (cold start)
