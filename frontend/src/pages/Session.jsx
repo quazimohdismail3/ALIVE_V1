@@ -6,6 +6,7 @@ import { useWakeLock } from '../hooks/useWakeLock.js';
 import { useSessionAccum } from '../hooks/useSessionAccum.js';
 import { usePhase2RFConvergence } from '../hooks/usePhase2RFConvergence.js';
 import { AnsState } from '../components/AnsState.jsx';
+import { HrvChart } from '../components/HrvChart.jsx';
 import { HrvMetrics } from '../components/HrvMetrics.jsx';
 import { MusicParams } from '../components/MusicParams.jsx';
 import { SensorStatusBar } from '../components/SensorStatusBar.jsx';
@@ -55,6 +56,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const [elapsed, setElapsed]       = useState(0);
   const [lastStatus, setLastStatus] = useState(null); // {status, n_rr, t} from backend buffering / low_sqi
   const [sensorReady, setSensorReady] = useState(false);
+  const [hrvPoints, setHrvPoints]   = useState([]);
 
   const wsRef       = useRef(null);
   const fusionRef   = useRef(null);
@@ -185,6 +187,13 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       setFrame(msg);
       setLastStatus(null);
       accumPush(msg);
+
+      if (msg.metrics?.rmssd > 0) {
+        setHrvPoints(prev => {
+          const next = [...prev, { t: msg.t, rmssd: msg.metrics.rmssd }];
+          return next.length > 180 ? next.slice(-180) : next; // max 3 min window
+        });
+      }
 
       // Wire audio updates every frame
       if (audioRef.current?._started) {
@@ -324,6 +333,34 @@ export default function Session({ cfg, onEnd, onDiscard }) {
             </div>
           )}
         </div>
+
+        {/* RF display row */}
+        {frame?.rf_bpm && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8,
+            padding: '8px 14px', marginTop: 12,
+            background: 'rgba(255,255,255,0.03)', borderRadius: 10,
+            border: '1px solid rgba(255,255,255,0.06)',
+          }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: frame.rf_locked ? '#3FBFA8' : '#EF9F27', flexShrink: 0 }} />
+            <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>RF</span>
+            <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{frame.rf_bpm.toFixed(1)} bpm</span>
+            {frame.rf_locked && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#3FBFA8' }}>locked</span>}
+          </div>
+        )}
+
+        {/* Real-time HRV chart */}
+        {hrvPoints.length >= 2 && (
+          <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+              <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>HRV</span>
+              {frame?.metrics?.rmssd > 0 && (
+                <span style={{ fontSize: 13, fontWeight: 700, color: '#3FBFA8' }}>{Math.round(frame.metrics.rmssd)} ms</span>
+              )}
+            </div>
+            <HrvChart points={hrvPoints} width={248} height={64} colorHex="#3FBFA8" />
+          </div>
+        )}
 
         {/* HRV metrics */}
         <div className="v2-card fade-slide-up" style={{ marginBottom: 12 }}>

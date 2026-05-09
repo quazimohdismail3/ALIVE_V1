@@ -1,0 +1,29 @@
+{
+  "_note": "StemLoader returns null on fetch failure — oscillator fallback stays active. Update urls when files are downloaded.",
+  "_version": 2,
+  "ground": {
+    "url": "/stems/ground/bowl_enhuber_cc0.mp3",
+    "license": "CC0",
+    "attribution": "\"Tibetan singing bowl\" by enhuber — freesound.org/s/400819 — CC0"
+  },
+  "breath": {
+    "url": "/stems/breath/wind_florianreichelt_cc0.mp3",
+    "license": "CC0",
+    "attribution": "\"Soft Wind\" by florianreichelt — freesound.org/s/459977 — CC0"
+  },
+  "harmonic": {
+    "url": "/stems/harmonic/choir_deadrobotmusic_cc0.mp3",
+    "license": "CC0",
+    "attribution": "\"Ambient F# Minor Ethereal Choir Pad 1\" by deadrobotmusic — freesound.org/s/808032 — CC0"
+  },
+  "spatial": {
+    "url": "/stems/spatial/rain_richwise_cc0.mp3",
+    "license": "CC0",
+    "attribution": "\"Rain Loop 3\" by richwise — freesound.org/s/584943 — CC0"
+  },
+  "morning": {
+    "url": "/stems/morning/piano_erokia_cc0.mp3",
+    "license": "CC0",
+    "attribution": "\"Piano Ambiance 4 [CC0]\" by Erokia — freesound.org/s/387588 — CC0"
+  }
+}

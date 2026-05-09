@@ -287,6 +287,24 @@ export default function Calibration({ cfg, onLocked, onSkip, isOnboarding = fals
                   RMSSD {Math.round(calHrv.rmssd_median)} ms
                 </div>
               )}
+              {rfBpm && (
+                <div style={{
+                  marginTop: 16,
+                  padding: '16px',
+                  background: 'rgba(63,191,168,0.08)',
+                  border: '1.5px solid rgba(63,191,168,0.3)',
+                  borderRadius: 14,
+                  textAlign: 'center',
+                }}>
+                  <div style={{ fontSize: 11, color: '#3FBFA8', textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 6 }}>
+                    RF Locked
+                  </div>
+                  <div style={{ fontSize: 32, fontWeight: 800, color: '#3FBFA8', letterSpacing: '-0.02em' }}>
+                    {rfBpm.toFixed(1)}
+                  </div>
+                  <div style={{ fontSize: 12, color: 'var(--text-dim)', marginTop: 4 }}>breaths per minute</div>
+                </div>
+              )}
             </>
           )}
           {status === 'timeout' && (

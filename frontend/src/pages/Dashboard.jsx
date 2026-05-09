@@ -5,16 +5,18 @@ import { useAuth } from '../context/AuthContext.jsx'
 import { useSensorContext } from '../context/SensorContext.jsx'
 import { getSessions, getRecommendations } from '../lib/api.js'
 import { SensorStatusBar } from '../components/SensorStatusBar.jsx'
+import { SESSIONS, getSessionList } from '../config/sessions.js'
 
-// ── Circadian logic (matches backend/context/circadian.py) ─────────────────
-const SESSION_CIRCADIAN_FIT = {
-  find_your_calm:    { best: [20, 22], decent: [12, 20] },
-  wind_down:         { best: [21, 24], decent: [18, 24] },
-  morning_emergence: { best: [5, 9],   decent: [9, 11] },
+// ── Color map for colorKey ────────────────────────────────────────────────────
+const COLOR = {
+  teal:   '#3FBFA8',
+  indigo: '#7C6FF7',
+  gold:   '#EF9F27',
 }
 
+// ── Circadian badge ───────────────────────────────────────────────────────────
 function circadianBadge(sessionId) {
-  const fit = SESSION_CIRCADIAN_FIT[sessionId]
+  const fit = SESSIONS[sessionId]?.circadian
   if (!fit) return null
   const h = new Date().getHours()
   const inBest   = h >= fit.best[0]   && h <= fit.best[1]
@@ -24,29 +26,11 @@ function circadianBadge(sessionId) {
   return { label: 'Not ideal', color: '#7A7A96' }
 }
 
-// ── Session types ────────────────────────────────────────────────────────────
-const SESSIONS = [
-  { id: 'find_your_calm',    label: 'Find Your Calm',      icon: '🌊', duration: '10 min',
-    desc: 'Guide your nervous system from activation into regulated stillness.' },
-  { id: 'wind_down',         label: 'Wind Down',           icon: '🌙', duration: '15 min',
-    desc: 'Prepare body and mind for deep, restorative sleep.' },
-  { id: 'morning_emergence', label: 'Morning Emergence',   icon: '☀️', duration: '10 min',
-    desc: 'Activate healthy sympathetic tone for focused, energised presence.' },
-]
-
-// ── Duration options ──────────────────────────────────────────────────────────
-const DURATIONS = [
-  { label: '5 min',  s: 300 },
-  { label: '10 min', s: 600 },
-  { label: '20 min', s: 1200 },
-  { label: 'Open',   s: 0 },
-]
-
-// ── Sensor modes ─────────────────────────────────────────────────────────────
+// ── Sensor modes ──────────────────────────────────────────────────────────────
 const MODES = [
-  { sensorMode: 1, backendMode: 1, key: 'phone',    label: 'Phone Only',      badge: 'Medium confidence',
+  { sensorMode: 1, backendMode: 1, key: 'phone',    label: 'Phone Only',        badge: 'Medium confidence',
     desc: 'Rear camera rPPG + mic. No hardware needed.' },
-  { sensorMode: 2, backendMode: 2, key: 'h10',      label: 'Polar H10',       badge: 'High confidence',
+  { sensorMode: 2, backendMode: 2, key: 'h10',      label: 'Polar H10',         badge: 'High confidence',
     desc: 'ECG-grade RR intervals. Cleanest HRV signal.' },
   { sensorMode: 3, backendMode: 3, key: 'combined', label: 'Phone + Polar H10', badge: 'Highest confidence', star: true,
     desc: 'All sensors combined. Best science.' },
@@ -111,12 +95,16 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
   const { user, signOut } = useAuth()
   const { latestRR, bleStatus, requestBle } = useSensorContext()
 
-  const [sessions, setSessions]             = useState([])
-  const [recs, setRecs]                     = useState([])
-  const [loadingData, setLoadingData]       = useState(true)
-  const [modeKey, setModeKey]               = useState('h10')
-  const [sessionId, setSessionId]           = useState('find_your_calm')
-  const [durationS, setDurationS]           = useState(600)
+  const SESSION_LIST = getSessionList()
+  const DEFAULT_SESSION_ID = SESSION_LIST[0].id
+  const DEFAULT_DURATION_S  = SESSION_LIST[0].durations[0].value
+
+  const [sessions, setSessions]       = useState([])
+  const [recs, setRecs]               = useState([])
+  const [loadingData, setLoadingData] = useState(true)
+  const [modeKey, setModeKey]         = useState('h10')
+  const [sessionId, setSessionId]     = useState(DEFAULT_SESSION_ID)
+  const [durationS, setDurationS]     = useState(DEFAULT_DURATION_S)
 
   const latestHR = latestRR.length > 0
     ? Math.round(60000 / latestRR[latestRR.length - 1])
@@ -139,11 +127,16 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
 
   const badges = useMemo(() => {
     const out = {}
-    SESSIONS.forEach(s => { out[s.id] = circadianBadge(s.id) })
+    SESSION_LIST.forEach(s => { out[s.id] = circadianBadge(s.id) })
     return out
   }, [])
 
   const selectedMode = MODES.find(m => m.key === modeKey) ?? MODES[1]
+
+  function handleSelectSession(id) {
+    setSessionId(id)
+    setDurationS(SESSIONS[id].durations[0].value)
+  }
 
   function handleStart(skipCalibration = false) {
     onStart({
@@ -197,7 +190,7 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
           </button>
         </div>
 
-        {/* Live sensor status — rfLocked not relevant on Dashboard, hide it */}
+        {/* Live sensor status */}
         <div style={{ marginBottom: 32 }}>
           <SensorStatusBar rfLocked={null} sqi={null} />
         </div>
@@ -232,65 +225,66 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
             Session
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-            {SESSIONS.map(s => {
-              const badge  = badges[s.id]
-              const active = sessionId === s.id
+            {SESSION_LIST.map(s => {
+              const active     = sessionId === s.id
+              const badge      = badges[s.id]
+              const accentColor = COLOR[s.colorKey] ?? 'var(--primary)'
+
               return (
                 <div
                   key={s.id}
-                  onClick={() => setSessionId(s.id)}
+                  onClick={() => handleSelectSession(s.id)}
                   className="touch-target"
                   style={{
                     padding: '14px 16px', borderRadius: 14, cursor: 'pointer',
-                    border: `1.5px solid ${active ? 'var(--primary)' : 'rgba(255,255,255,0.06)'}`,
-                    background: active ? 'rgba(124,111,247,0.12)' : 'var(--surface)',
+                    border: `1.5px solid ${active ? accentColor : 'rgba(255,255,255,0.06)'}`,
+                    background: active ? `${accentColor}1A` : 'var(--surface)',
                     transition: 'border-color 200ms, background 200ms',
                     display: 'flex', alignItems: 'flex-start', gap: 14,
                   }}
                 >
                   <span style={{ fontSize: 22, flexShrink: 0 }}>{s.icon}</span>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    {/* Row 1: label + circadian badge */}
+                    <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 8 }}>
                       <span style={{ fontWeight: 600, fontSize: 15 }}>{s.label}</span>
-                      <span style={{ fontSize: 11, color: 'var(--text-dim)' }}>{s.duration}</span>
+                      {badge && (
+                        <div style={{ display: 'inline-flex', alignItems: 'center', gap: 4, flexShrink: 0, background: `${badge.color}18`, border: `1px solid ${badge.color}40`, borderRadius: 6, padding: '2px 8px' }}>
+                          <div style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color }} />
+                          <span style={{ color: badge.color, fontSize: 10, fontWeight: 600 }}>{badge.label}</span>
+                        </div>
+                      )}
                     </div>
-                    <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 3, lineHeight: 1.4 }}>{s.desc}</div>
-                    {badge && (
-                      <div style={{ marginTop: 6, display: 'inline-flex', alignItems: 'center', gap: 4, background: `${badge.color}18`, border: `1px solid ${badge.color}40`, borderRadius: 6, padding: '2px 8px' }}>
-                        <div style={{ width: 6, height: 6, borderRadius: '50%', background: badge.color }} />
-                        <span style={{ color: badge.color, fontSize: 10, fontWeight: 600 }}>{badge.label}</span>
-                      </div>
-                    )}
+
+                    {/* Row 2: description */}
+                    <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 4, lineHeight: 1.4 }}>
+                      {s.description}
+                    </div>
+
+                    {/* Row 3: duration chips */}
+                    <div style={{ display: 'flex', gap: 6, marginTop: 10, flexWrap: 'wrap' }}>
+                      {s.durations.map(d => {
+                        const chipActive = active && durationS === d.value
+                        return (
+                          <button
+                            key={d.value}
+                            onClick={e => { e.stopPropagation(); if (!active) handleSelectSession(s.id); setDurationS(d.value) }}
+                            style={{
+                              padding: '4px 10px', borderRadius: 8, fontSize: 12, cursor: 'pointer',
+                              border: `1px solid ${chipActive ? accentColor : 'rgba(255,255,255,0.12)'}`,
+                              background: chipActive ? `${accentColor}2A` : 'rgba(255,255,255,0.04)',
+                              color: chipActive ? accentColor : 'var(--text-dim)',
+                              fontWeight: chipActive ? 700 : 400,
+                              transition: 'all 150ms ease',
+                            }}
+                          >
+                            {d.label}
+                          </button>
+                        )
+                      })}
+                    </div>
                   </div>
                 </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Duration picker */}
-        <div style={{ marginBottom: 24 }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-            Duration
-          </div>
-          <div style={{ display: 'flex', gap: 8 }}>
-            {DURATIONS.map(d => {
-              const active = durationS === d.s
-              return (
-                <button
-                  key={d.s}
-                  onClick={() => setDurationS(d.s)}
-                  style={{
-                    flex: 1, padding: '10px 4px', borderRadius: 10, cursor: 'pointer',
-                    border: `1.5px solid ${active ? 'var(--primary)' : 'rgba(255,255,255,0.1)'}`,
-                    background: active ? 'rgba(124,111,247,0.15)' : 'transparent',
-                    color: active ? 'var(--primary)' : 'var(--text-dim)',
-                    fontWeight: active ? 700 : 400, fontSize: 13,
-                    transition: 'all 150ms ease',
-                  }}
-                >
-                  {d.label}
-                </button>
               )
             })}
           </div>
@@ -324,7 +318,7 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
           </div>
         </div>
 
-        {/* Connect H10 CTA — shown when H10/combined mode selected and not yet connected */}
+        {/* Connect H10 CTA */}
         {(modeKey === 'h10' || modeKey === 'combined') && bleStatus !== 'connected' && (
           <button
             onClick={requestBle}
@@ -354,7 +348,7 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
           Begin Session
         </button>
 
-        {/* Quick Start — skip re-calibration for returning users */}
+        {/* Quick Start */}
         {hasCalibrated && (
           <button
             onClick={() => handleStart(true)}
