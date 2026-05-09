@@ -265,6 +265,33 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
   const isCalibrating = phase === 'calibrating'
   const isLocked      = phase === 'locked'
 
+  // Breath phase cue — syncs with CSS animation cycle
+  const [breathPhase, setBreathPhase] = useState('inhale')
+  useEffect(() => {
+    if (!isCalibrating) return
+    const iv = setInterval(() => {
+      const periodMs = periodS * 1000
+      const t = (Date.now() % periodMs) / periodMs
+      setBreathPhase(t < 0.4 ? 'inhale' : 'exhale')
+    }, 250)
+    return () => clearInterval(iv)
+  }, [isCalibrating, periodS])
+
+  // Rotating guidance tips, one every 12 seconds
+  const CAL_TIPS = [
+    "Breathe naturally — don't force the rhythm",
+    "Your heart rate variability guides the search",
+    "Slow breath activates your vagus nerve",
+    "Keep still and let your body lead",
+    "Each breath narrows your resonance point",
+  ]
+  const [tipIndex, setTipIndex] = useState(0)
+  useEffect(() => {
+    if (!isCalibrating) return
+    const iv = setInterval(() => setTipIndex(i => (i + 1) % CAL_TIPS.length), 12000)
+    return () => clearInterval(iv)
+  }, [isCalibrating])
+
   const orbColor = isLocked
     ? 'rgba(0,208,132,0.35)'
     : 'rgba(124,111,247,0.35)'
@@ -407,75 +434,126 @@ export default function ConnectionRitual({ cfg, onReady, onBack, isOnboarding = 
       )}
 
       {/* â•â•â•â•â•â•â•â•â•â• Phase: calibrating â•â•â•â•â•â•â•â•â•â• */}
-      {isCalibrating && (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px 0', animation: 'ritualFadeIn 400ms ease' }}>
-          <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 22, textAlign: 'center', margin: '12px 0 28px' }}>
-            Finding your resonance
-          </h2>
+      {isCalibrating && (() => {
+        const CAL_CAP_S = 120
+        const progressPct = Math.min(1, elapsed / CAL_CAP_S)
+        const R = 116
+        const circ = 2 * Math.PI * R
+        const dashOffset = circ * (1 - progressPct)
+        return (
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', padding: '12px 20px 0', animation: 'ritualFadeIn 400ms ease' }}>
+            <h2 style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 22, textAlign: 'center', margin: '12px 0 20px' }}>
+              Finding your resonance
+            </h2>
 
-          {/* Breathing orb */}
-          <div
-            style={{
-              width: 220, height: 220, borderRadius: '50%',
-              background: `radial-gradient(circle, ${orbColor} 0%, transparent 70%)`,
-              border: `2px solid ${orbBorder}`,
-              boxShadow: orbGlow,
-              animation: `ritualBreathe ${breatheDur}s ease-in-out infinite`,
-              display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-              flexShrink: 0,
-            }}
-          >
-            <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 30, color: '#7C6FF7', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-              {targetBpm.toFixed(1)}
-            </div>
-            <div style={{ color: 'var(--text-dim)', fontSize: 11, marginTop: 4, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
-              breaths / min
-            </div>
-            {liveHr !== null && (
-              <div style={{ marginTop: 10, fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>
-                <span style={{ fontSize: 18, fontWeight: 600, color: 'rgba(255,255,255,0.8)' }}>{Math.round(liveHr)}</span>
-                <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 3 }}>bpm</span>
+            {/* Progress ring + breathing orb */}
+            <div style={{ position: 'relative', width: 248, height: 248, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+              {/* SVG progress arc */}
+              <svg width="248" height="248" style={{ position: 'absolute', top: 0, left: 0, transform: 'rotate(-90deg)' }}>
+                <circle cx="124" cy="124" r={R} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="3" />
+                <circle
+                  cx="124" cy="124" r={R} fill="none"
+                  stroke={coherence >= 0.6 ? '#00D084' : '#7C6FF7'}
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeDasharray={circ}
+                  strokeDashoffset={dashOffset}
+                  style={{ transition: 'stroke-dashoffset 900ms ease, stroke 600ms ease' }}
+                />
+              </svg>
+
+              {/* Breathing orb */}
+              <div
+                style={{
+                  width: 220, height: 220, borderRadius: '50%',
+                  background: `radial-gradient(circle, ${orbColor} 0%, transparent 70%)`,
+                  border: `2px solid ${orbBorder}`,
+                  boxShadow: orbGlow,
+                  animation: `ritualBreathe ${breatheDur}s ease-in-out infinite`,
+                  display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                }}
+              >
+                {/* Breath phase cue */}
+                <div style={{ fontSize: 11, letterSpacing: '0.12em', textTransform: 'uppercase', color: 'rgba(124,111,247,0.7)', marginBottom: 4, fontWeight: 600 }}>
+                  {breathPhase === 'inhale' ? 'Inhale' : 'Exhale'}
+                </div>
+                <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 28, color: '#7C6FF7', fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
+                  {targetBpm.toFixed(1)}
+                </div>
+                <div style={{ color: 'var(--text-dim)', fontSize: 10, marginTop: 3, letterSpacing: '0.06em', textTransform: 'uppercase' }}>
+                  breaths/min
+                </div>
+                {liveHr !== null ? (
+                  <div style={{ marginTop: 8, fontVariantNumeric: 'tabular-nums', textAlign: 'center' }}>
+                    <span style={{ fontSize: 17, fontWeight: 600, color: 'rgba(255,255,255,0.85)' }}>{Math.round(liveHr)}</span>
+                    <span style={{ fontSize: 10, color: 'var(--text-dim)', marginLeft: 3 }}>bpm HR</span>
+                  </div>
+                ) : (
+                  <div style={{ marginTop: 8, fontSize: 10, color: 'rgba(255,255,255,0.2)' }}>
+                    waiting for HR...
+                  </div>
+                )}
               </div>
-            )}
-          </div>
+            </div>
 
-          {/* Breath cue */}
-          <div style={{ marginTop: 24, textAlign: 'center' }}>
-            <div style={{ fontSize: 16, fontWeight: 600, marginBottom: 4 }}>
-              Breathe with the orb
+            {/* Timing cue */}
+            <div style={{ marginTop: 16, textAlign: 'center' }}>
+              <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
+                {inhaleS}s in &middot; {exhaleS}s out
+              </div>
             </div>
-            <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
-              Inhale {inhaleS}s Â· Exhale {exhaleS}s
+
+            {/* Rotating tip — fades between messages */}
+            <div style={{ marginTop: 18, textAlign: 'center', minHeight: 36, padding: '0 12px' }}>
+              <p style={{ color: 'rgba(255,255,255,0.45)', fontSize: 13, lineHeight: 1.5, margin: 0, transition: 'opacity 600ms ease' }}>
+                {CAL_TIPS[tipIndex]}
+              </p>
+            </div>
+
+            {/* Spacer */}
+            <div style={{ flex: 1 }} />
+
+            {/* Coherence + time progress */}
+            <div style={{ width: '100%', maxWidth: 480, padding: '0 0 32px', boxSizing: 'border-box' }}>
+              {/* Coherence bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>Coherence</span>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                  {(coherence * 100).toFixed(0)}%
+                </span>
+              </div>
+              <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(coherence * 100).toFixed(0)}%`,
+                  background: coherence >= 0.6 ? '#00D084' : 'var(--primary, #7C6FF7)',
+                  transition: 'width 800ms ease, background 600ms ease',
+                  borderRadius: 4,
+                }} />
+              </div>
+
+              {/* Time progress bar */}
+              <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 14, marginBottom: 6 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>
+                  {dwellRem > 0 ? `Next sweep in ${dwellRem}s` : 'Analysing pattern…'}
+                </span>
+                <span style={{ color: 'var(--text-dim)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
+                  {Math.round(elapsed)}s / 2 min
+                </span>
+              </div>
+              <div style={{ height: 4, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
+                <div style={{
+                  height: '100%',
+                  width: `${(progressPct * 100).toFixed(1)}%`,
+                  background: 'rgba(124,111,247,0.5)',
+                  transition: 'width 900ms linear',
+                  borderRadius: 4,
+                }} />
+              </div>
             </div>
           </div>
-
-          {/* Spacer pushes progress to bottom */}
-          <div style={{ flex: 1 }} />
-
-          {/* Coherence progress */}
-          <div style={{ width: '100%', maxWidth: 480, padding: '0 0 32px', boxSizing: 'border-box' }}>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-dim)', fontSize: 11 }}>Coherence</span>
-              <span style={{ color: 'var(--text-dim)', fontSize: 11, fontVariantNumeric: 'tabular-nums' }}>
-                {(coherence * 100).toFixed(0)}%
-              </span>
-            </div>
-            <div style={{ height: 6, background: 'rgba(255,255,255,0.06)', borderRadius: 4, overflow: 'hidden' }}>
-              <div style={{
-                height: '100%',
-                width: `${(coherence * 100).toFixed(0)}%`,
-                background: coherence >= 0.6 ? '#00D084' : 'var(--primary, #7C6FF7)',
-                transition: 'width 800ms ease, background 600ms ease',
-                borderRadius: 4,
-              }} />
-            </div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 10, color: 'var(--text-dim)', fontSize: 11 }}>
-              <span>Next sweep in: {dwellRem}s</span>
-              <span>Elapsed: {Math.round(elapsed)}s Â· up to 2 min</span>
-            </div>
-          </div>
-        </div>
-      )}
+        )
+      })()}
 
       {/* â•â•â•â•â•â•â•â•â•â• Phase: locked â•â•â•â•â•â•â•â•â•â• */}
       {isLocked && (

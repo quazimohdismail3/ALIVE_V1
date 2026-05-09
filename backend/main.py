@@ -291,12 +291,18 @@ async def ws_session(
                 if now - cal_start_t >= CAL_CAP_S:
                     break
 
-                # Drain incoming WS messages for ~1s to gather RR + resp_amp
+                # Drain incoming WS messages for ~1s to gather RR + resp_amp.
+                # Use remaining window as timeout so we only cancel receive_text()
+                # once per outer iteration (not 20× at 50ms each, which corrupts
+                # Starlette's WS receive state after hundreds of cancellations).
                 drain_until = now + 1.0
-                while time.time() < drain_until:
+                while True:
+                    remaining = drain_until - time.time()
+                    if remaining <= 0:
+                        break
                     try:
                         raw = await asyncio.wait_for(
-                            websocket.receive_text(), timeout=0.05
+                            websocket.receive_text(), timeout=remaining
                         )
                         msg = json.loads(raw)
                         if "rr" in msg:
