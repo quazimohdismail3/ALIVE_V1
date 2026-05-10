@@ -1,5 +1,7 @@
 // frontend/src/audio/binaural.js
 // INVARIANT: left oscillator frequency ALWAYS lower than right. No exceptions.
+// Volume: -50 dB per channel — subliminal under natural stem layers (Oster 1973 / Huberman 2021).
+// Binaural beat operates subconsciously; stems carry conscious perceptual load.
 import * as Tone from 'tone';
 
 export class BinauralGenerator {
@@ -7,8 +9,9 @@ export class BinauralGenerator {
         // Panner nodes to separate L and R channels
         this._leftPan = new Tone.Panner(-1).toDestination();
         this._rightPan = new Tone.Panner(1).toDestination();
-        this._leftVol = new Tone.Volume(-38).connect(this._leftPan);
-        this._rightVol = new Tone.Volume(-38).connect(this._rightPan);
+        // -50 dB: subliminal level — masked under natural stems, never consciously heard
+        this._leftVol = new Tone.Volume(-50).connect(this._leftPan);
+        this._rightVol = new Tone.Volume(-50).connect(this._rightPan);
         this._leftOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._leftVol);
         this._rightOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._rightVol);
         this._carrier = 200;

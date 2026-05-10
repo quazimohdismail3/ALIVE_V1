@@ -2,7 +2,18 @@
 // ISO-bridge adaptive audio engine with 5-layer stem loading + procedural chord engine.
 // ISO Principle (Altshuler 1948): bridge = current + α × (target − current)
 // Binaural glide 45s minimum (Thaut 2015).
-// Oscillator + chord engine always-on; stems load progressively and take over layers.
+//
+// AUDIO HIERARCHY (loudest to quietest):
+//   1. spatial stems  (forest ambience — dominant natural layer)
+//   2. breath stems   (birds/wind — nature texture)
+//   3. harmonic stems (ether vox — pad support)
+//   4. binaural layer (subliminal −50 dB, masked by stems)
+//   5. chord engine   (silent unless harmonic stem fails to load after 20s)
+//   6. breath guide   (subtle 174Hz sine, 25% of configured volume)
+//   7. ground drone   (muted — dungeon_drone semantically wrong; ChordEngine handles ground when needed)
+//
+// Startup guarantee: ALL synthetic layers start at −60 dB (silent).
+// Natural stems fade in over 8s once loaded. No explosive onset.
 import * as Tone from 'tone';
 import { BinauralGenerator } from './binaural.js';
 import { BreathActuator }    from './breath_actuator.js';
@@ -20,24 +31,27 @@ const BINAURAL_GLIDE_MS = 45000;
 const CONFIRM_MS_STRESS = 8000;   // 8s for sympathetic direction
 const CONFIRM_MS_CALM   = 25000;  // 25s for parasympathetic direction
 
+// If harmonic stem not loaded within this window → activate chord engine as quiet fallback
+const CHORD_FALLBACK_MS = 20000;
+
 export class SessionAudio {
   constructor(sessionType) {
     this.sessionType  = sessionType;
     this._sessionCfg  = SESSIONS[sessionType] ?? SESSIONS.find_your_calm;
 
-    // Core oscillator layers (always active)
+    // Core oscillator layers (always active, start silent)
     this.binaural = new BinauralGenerator();
     this.breath   = new BreathActuator();
 
-    // Procedural harmonic pad — always active, fades out when harmonic stem loads
+    // Procedural harmonic pad — silent until harmonic stem fails to load
     this._chord = new ChordEngine();
 
     // Stem layers (progressive — load async, fallback = chord engine / silent if absent)
     this._stems = {
-      ground:   new StemLayer(), // low-freq drone texture
+      ground:   new StemLayer(), // low-freq drone texture (muted — dungeon wrong for HRV)
       breath_s: new StemLayer(), // wind / nature texture (separate from breath guide)
       harmonic: new StemLayer(), // ambient pad — takes over from _chord when loaded
-      spatial:  new StemLayer(), // forest / rain
+      spatial:  new StemLayer(), // forest / rain (dominant natural layer)
       morning:  new StemLayer(), // bright pad (morning_emergence only)
     };
 
@@ -54,7 +68,7 @@ export class SessionAudio {
     this._lastAnsDir  = null;
     this._ansDirSince = 0;
 
-    // SOMA carrier (3 detuned sub-bass oscillators + amplitude LFO)
+    // SOMA carrier — DISABLED: 3 detuned sines caused intermodulation distortion (buzzy)
     this._soma     = [];
     this._somaGain = null;
     this._somaLFO  = null;
@@ -66,6 +80,9 @@ export class SessionAudio {
     this._sessionStartMs = 0;
     this._arcPhase       = 'ENTRAIN'; // ENTRAIN | SHIFT | INTEGRATE
     this._circadian      = 'midday';  // morning | midday | evening
+
+    // Fallback timer — activates chord engine if harmonic stem doesn't load
+    this._chordFallbackTimer = null;
   }
 
   async start(rfBpm = 6) {
@@ -73,12 +90,14 @@ export class SessionAudio {
     this._rfBpm          = rfBpm;
     this._sessionStartMs = Date.now();
     this._circadian      = this._getCircadianContext();
-    this.binaural.start();
-    this.breath.start(rfBpm);
-    // SOMA disabled — 3 detuned sines caused intermodulation distortion (buzzy)
-    // this._startSomaCarrier();
 
-    // Chord engine needs carrier from first phase to set root pitch
+    // Binaural starts at −50 dB (subliminal) — no further ramp needed
+    this.binaural.start();
+
+    // Breath guide starts at −60 dB (silent), ramps when phase applies it
+    this.breath.start(rfBpm);
+
+    // Chord engine initialises silently — does NOT play until activateFallback() called
     const firstPhase = Object.keys(this._sessionCfg.phases)[0];
     const firstCfg   = this._sessionCfg.phases[firstPhase];
     await this._chord.start(firstCfg?.carrier ?? 256, 1, this.sessionType);
@@ -86,11 +105,13 @@ export class SessionAudio {
     this._applyPhase(firstPhase, false);
     this._started = true;
 
-    // Load stems non-blocking — oscillator + chord keep playing throughout
+    // Load stems non-blocking — all synthetics remain silent/subliminal throughout
     this._loadStems();
   }
 
   stop() {
+    clearTimeout(this._chordFallbackTimer);
+    this._chordFallbackTimer = null;
     try { this.binaural.stop(); } catch (_) {}
     try { this.breath.stop();   } catch (_) {}
     this._chord.stop();
@@ -134,7 +155,7 @@ export class SessionAudio {
       this.binaural.set(bridgeBeat, carrierHz, BINAURAL_GLIDE_MS);
     }
 
-    // Chord engine: update root/mode/tension/presence every 1Hz
+    // Chord engine: update params (only has effect if chord is active as fallback)
     this._chord.setParams({
       keyMode:  params.key_mode,
       rootHz:   params.soma_carrier_hz,
@@ -186,12 +207,18 @@ export class SessionAudio {
 
       if (this._started && !this._stemsStarted) {
         this._stemsStarted = true;
+
+        // Stems start at -60 dB (StemLayer default) and ramp up via _applyStemPhaseVolumes
         Object.values(this._stems).forEach(l => l.start());
 
-        // Harmonic stem loaded → chord engine steps back
+        // Harmonic stem loaded → chord engine stays silent (it was never active)
         if (this._stems.harmonic.isLoaded) {
-          this._chord.fadeOut(3000);
+          // Chord is already silent — this just ensures it stays silent and cleans up timer
+          clearTimeout(this._chordFallbackTimer);
+          this._chordFallbackTimer = null;
+          this._chord.fadeOut(0); // ensure inactive flag set
         }
+
         if (this._currentPhase) this._applyStemPhaseVolumes(this._currentPhase);
 
         // Start organic variation after stems are running
@@ -204,7 +231,18 @@ export class SessionAudio {
         });
       }
     } catch (_) {
-      // Network/parse error — chord engine + oscillator fallback already running
+      // Network/parse error — chord fallback will activate via timer below
+    }
+
+    // Fallback: if harmonic stem didn't load, activate chord engine after timeout
+    // This ensures there is SOME harmonic sound even if stems are unavailable
+    if (this._started && !this._chordFallbackTimer) {
+      this._chordFallbackTimer = setTimeout(() => {
+        if (this._started && !this._stems.harmonic.isLoaded) {
+          this._chord.activateFallback(8000);
+        }
+        this._chordFallbackTimer = null;
+      }, CHORD_FALLBACK_MS);
     }
   }
 
@@ -232,10 +270,14 @@ export class SessionAudio {
     this._currentPhase = phase;
     this._phaseTarget  = cfg.isoTarget ?? null;
     this.binaural.set(cfg.binaural, cfg.carrier, BINAURAL_GLIDE_MS);
-    this.breath.setVolume(cfg.breathVol > 0 ? cfg.breathVol : 0.001, 2000);
+
+    // Breath guide: scale to 25% of configured volume — subtle hint, not dominant tone
+    // Research: breath guide should be felt as invitation, not heard as buzzing sine
+    const scaledBreathVol = (cfg.breathVol ?? 0) * 0.25;
+    this.breath.setVolume(scaledBreathVol > 0.005 ? scaledBreathVol : 0.001, 4000);
     if (cfg.breathRate) this.breath.setRF(cfg.breathRate);
 
-    // Chord engine re-voices to reflect phase's carrier/mode shift
+    // Chord engine re-voices only if it has been activated as fallback
     this._chord.refresh();
 
     if (this._stemsStarted) this._applyStemPhaseVolumes(phase);
@@ -250,12 +292,19 @@ export class SessionAudio {
     const coh  = t.coherence ?? 0.5;
     const isMorning = this.sessionType === 'morning_emergence';
 
-    // Research (Annerstedt 2013, Parizek 2023): nature sounds are the active vagal ingredient —
-    // keep spatial/breath dominant; ground drone subliminal; harmonic pad subordinate.
-    this._stems.ground.setVolume(Math.max(0.02, coh * calm * 0.07), 4000);   // dungeon drone: near-subliminal (~-25 dB max)
-    this._stems.breath_s.setVolume(cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.001, 2000);
-    this._stems.harmonic.setVolume(calm * 0.42, 3000);                        // pad: support layer
-    this._stems.spatial.setVolume(isMorning ? 0.001 : calm * 0.58, 4000);    // forest: dominant natural layer
+    // Ground drone (dungeon_drone_cc0.ogg) — muted. Semantically wrong for HRV therapy.
+    // ChordEngine handles tonal ground layer if stems fail (via activateFallback).
+    this._stems.ground.setVolume(0.001, 4000);
+
+    // Breath/nature texture (birds_wind) — prominent natural layer
+    // Research (Annerstedt 2013, Miyazaki 2014): nature sounds are the active vagal ingredient.
+    this._stems.breath_s.setVolume(cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.15, 3000);
+
+    // Harmonic pad (ether_vox) — support layer, below spatial
+    this._stems.harmonic.setVolume(calm * 0.42, 3000);
+
+    // Spatial / forest — dominant natural layer (highest volume)
+    this._stems.spatial.setVolume(isMorning ? 0.001 : calm * 0.58, 4000);
 
     const morningPhases = ['ACTIVATE', 'ENERGIZE', 'PRIME'];
     this._stems.morning.setVolume(
@@ -269,35 +318,12 @@ export class SessionAudio {
     if (!this._stemsStarted) return;
     const presence = Math.max(0, Math.min(1, params.voice_range_presence ?? 0.4));
     if (this._stems.harmonic.isLoaded) {
-      this._stems.harmonic.setVolume(presence * 0.6, 2000);
+      // Harmonic pad responds to presence, but stays as support layer
+      this._stems.harmonic.setVolume(presence * 0.45, 2000);
     }
   }
 
-  // ── Phase 1B additions ──────────────────────────────────────────────────────
-
-  _startSomaCarrier() {
-    const SOMA_HZ = { find_your_calm: 60, wind_down: 60, morning_emergence: 52 };
-    const baseHz  = SOMA_HZ[this.sessionType] ?? 60;
-    const freqs   = [baseHz - 1, baseHz, baseHz + 1.5];
-
-    try {
-      this._somaGain = new Tone.Volume(-52);
-      this._somaGain.toDestination();
-
-      this._soma = freqs.map(f => {
-        const osc = new Tone.Oscillator({ type: 'sine', frequency: f });
-        osc.connect(this._somaGain);
-        osc.start();
-        return osc;
-      });
-
-      // 0.02 Hz LFO (50s cycle) — slow breathing sensation on carrier
-      this._somaLFO = new Tone.LFO({ frequency: 0.02, min: -58, max: -48, type: 'sine' }).start();
-      this._somaLFO.connect(this._somaGain.volume);
-    } catch (_) {
-      // SOMA carrier is additive — any failure is silent degradation
-    }
-  }
+  // ── Phase 1B additions (arc, circadian) ────────────────────────────────────
 
   _getCircadianContext() {
     const h = new Date().getHours();
