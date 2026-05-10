@@ -33,9 +33,10 @@ export class ChordEngine {
     this._rootMidi = hzToMidi(rootHz);
     this._keyMode  = Math.min(2, Math.max(0, Math.round(keyMode)));
 
-    this._reverb  = new Tone.Reverb({ decay: 7, wet: 0.6 });
-    await this._reverb.generate();
-    this._volNode = new Tone.Volume(-24);
+    // IR convolver (real acoustic space) — warmer than Schroeder algorithmic reverb
+    this._reverb = new Tone.Convolver('/ir/stone_chamber.wav');
+    this._reverb.wet.value = 0.28;
+    this._volNode = new Tone.Volume(-30);
     this._pad     = new Tone.PolySynth(Tone.Synth, {
       oscillator: { type: 'triangle' },
       envelope:   { attack: 3.5, decay: 1.5, sustain: 0.7, release: 6.0 },
@@ -68,7 +69,7 @@ export class ChordEngine {
     }
     if (tension  !== undefined) this._tension = tension;
     if (presence !== undefined) {
-      const db = -30 + Math.max(0, Math.min(1, presence)) * 12;
+      const db = -36 + Math.max(0, Math.min(1, presence)) * 12; // range: -36 to -24 dB
       this._volNode?.volume.rampTo(db, 2);
     }
     if (reVoice) this._voiceLead();

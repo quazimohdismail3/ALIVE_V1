@@ -75,7 +75,8 @@ export class SessionAudio {
     this._circadian      = this._getCircadianContext();
     this.binaural.start();
     this.breath.start(rfBpm);
-    this._startSomaCarrier();
+    // SOMA disabled — 3 detuned sines caused intermodulation distortion (buzzy)
+    // this._startSomaCarrier();
 
     // Chord engine needs carrier from first phase to set root pitch
     const firstPhase = Object.keys(this._sessionCfg.phases)[0];
@@ -249,10 +250,12 @@ export class SessionAudio {
     const coh  = t.coherence ?? 0.5;
     const isMorning = this.sessionType === 'morning_emergence';
 
-    this._stems.ground.setVolume(Math.max(0.05, coh * calm * 0.7), 4000);
-    this._stems.breath_s.setVolume(cfg.breathVol > 0 ? cfg.breathVol * 0.6 : 0.001, 2000);
-    this._stems.harmonic.setVolume(calm * 0.5, 3000);
-    this._stems.spatial.setVolume(isMorning ? 0.001 : calm * 0.3, 4000);
+    // Research (Annerstedt 2013, Parizek 2023): nature sounds are the active vagal ingredient —
+    // keep spatial/breath dominant; ground drone subliminal; harmonic pad subordinate.
+    this._stems.ground.setVolume(Math.max(0.02, coh * calm * 0.07), 4000);   // dungeon drone: near-subliminal (~-25 dB max)
+    this._stems.breath_s.setVolume(cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.001, 2000);
+    this._stems.harmonic.setVolume(calm * 0.42, 3000);                        // pad: support layer
+    this._stems.spatial.setVolume(isMorning ? 0.001 : calm * 0.58, 4000);    // forest: dominant natural layer
 
     const morningPhases = ['ACTIVATE', 'ENERGIZE', 'PRIME'];
     this._stems.morning.setVolume(
