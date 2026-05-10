@@ -54,6 +54,8 @@ export class StemLayer {
 
   get isLoaded() { return this._loaded; }
 
+  get volNode()   { return this._volNode; }
+
   dispose() {
     try { this._player?.dispose(); } catch (_) {}
     try { this._volNode.dispose(); } catch (_) {}

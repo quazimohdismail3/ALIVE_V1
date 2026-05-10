@@ -1,9 +1,64 @@
 {
-  "_note": "Run scripts/download_stems.js to fetch these files. StemLoader returns null on fetch failure — chord engine + oscillator fallback stays active.",
-  "_version": 3,
-  "ground":   { "url": "/stems/ground/dungeon_drone_cc0.ogg",   "license": "CC0",      "attribution": "Loopable Dungeon Ambience — opengameart.org — CC0" },
-  "breath":   { "url": "/stems/breath/birds_wind_cc0.ogg",       "license": "CC0",      "attribution": "\"Birds and Wind - Ambient\" by Spring — opengameart.org — CC0" },
-  "harmonic": { "url": "/stems/harmonic/ether_vox_ccby.mp3",     "license": "CC-BY 3.0","attribution": "\"Ether Vox\" by Kevin MacLeod — incompetech.com — CC BY 3.0" },
-  "spatial":  { "url": "/stems/spatial/forest_ambience_cc0.mp3", "license": "CC0",      "attribution": "Forest Ambience — opengameart.org — CC0" },
-  "morning":  { "url": "/stems/morning/morning_ccby.mp3",        "license": "CC-BY 3.0","attribution": "\"Morning\" by Kevin MacLeod — incompetech.com — CC BY 3.0" }
+  "_note": "v2 schema — primary urls preserved for backward compatibility. stems[] array is for future A/B selection.",
+  "_version": 2,
+  "ground": {
+    "url": "/stems/ground/dungeon_drone_cc0.ogg",
+    "license": "CC0",
+    "attribution": "Loopable Dungeon Ambience — opengameart.org — CC0",
+    "energy": 0.15,
+    "valence": 0.6,
+    "spectral_brightness": "low",
+    "tags": ["drone", "parasympathetic", "ground"],
+    "stems": [
+      { "id": "ground_dungeon_001", "url": "/stems/ground/dungeon_drone_cc0.ogg", "energy": 0.15, "valence": 0.6, "license": "CC0" }
+    ]
+  },
+  "breath": {
+    "url": "/stems/breath/birds_wind_cc0.ogg",
+    "license": "CC0",
+    "attribution": "\"Birds and Wind - Ambient\" by Spring — opengameart.org — CC0",
+    "energy": 0.25,
+    "valence": 0.75,
+    "spectral_brightness": "mid",
+    "tags": ["nature", "birds", "breath", "parasympathetic"],
+    "stems": [
+      { "id": "breath_birds_001", "url": "/stems/breath/birds_wind_cc0.ogg", "energy": 0.25, "valence": 0.75, "license": "CC0" }
+    ]
+  },
+  "harmonic": {
+    "url": "/stems/harmonic/ether_vox_ccby.mp3",
+    "license": "CC-BY 3.0",
+    "attribution": "\"Ether Vox\" by Kevin MacLeod — incompetech.com — CC BY 3.0",
+    "energy": 0.2,
+    "valence": 0.7,
+    "spectral_brightness": "mid",
+    "tags": ["pad", "harmonic", "parasympathetic", "ethereal"],
+    "stems": [
+      { "id": "harmonic_ether_001", "url": "/stems/harmonic/ether_vox_ccby.mp3", "energy": 0.2, "valence": 0.7, "license": "CC-BY 3.0" }
+    ]
+  },
+  "spatial": {
+    "url": "/stems/spatial/forest_ambience_cc0.mp3",
+    "license": "CC0",
+    "attribution": "Forest Ambience — opengameart.org — CC0",
+    "energy": 0.2,
+    "valence": 0.8,
+    "spectral_brightness": "mid",
+    "tags": ["nature", "forest", "spatial", "parasympathetic"],
+    "stems": [
+      { "id": "spatial_forest_001", "url": "/stems/spatial/forest_ambience_cc0.mp3", "energy": 0.2, "valence": 0.8, "license": "CC0" }
+    ]
+  },
+  "morning": {
+    "url": "/stems/morning/morning_ccby.mp3",
+    "license": "CC-BY 3.0",
+    "attribution": "\"Morning\" by Kevin MacLeod — incompetech.com — CC BY 3.0",
+    "energy": 0.6,
+    "valence": 0.8,
+    "spectral_brightness": "high",
+    "tags": ["morning", "energy", "sympathetic", "bright"],
+    "stems": [
+      { "id": "morning_main_001", "url": "/stems/morning/morning_ccby.mp3", "energy": 0.6, "valence": 0.8, "license": "CC-BY 3.0" }
+    ]
+  }
 }

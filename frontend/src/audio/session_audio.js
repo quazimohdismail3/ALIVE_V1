@@ -9,6 +9,7 @@ import { BreathActuator }    from './breath_actuator.js';
 import { StemLayer }         from './stem_layer.js';
 import { stemLoader }        from './stem_loader.js';
 import { ChordEngine }       from './chord_engine.js';
+import { OrganicVariation }  from './organic_variation.js';
 import { SESSIONS }          from '../config/sessions.js';
 
 // INVARIANT: all param changes use 2000ms ramp minimum (enforced in BinauralGenerator/BreathActuator)
@@ -52,18 +53,34 @@ export class SessionAudio {
     this._alpha       = 0.0;
     this._lastAnsDir  = null;
     this._ansDirSince = 0;
+
+    // SOMA carrier (3 detuned sub-bass oscillators + amplitude LFO)
+    this._soma     = [];
+    this._somaGain = null;
+    this._somaLFO  = null;
+
+    // Organic variation (EQ LFO, silence actuator, HRTF rotation)
+    this._organic = new OrganicVariation();
+
+    // Session arc + circadian context
+    this._sessionStartMs = 0;
+    this._arcPhase       = 'ENTRAIN'; // ENTRAIN | SHIFT | INTEGRATE
+    this._circadian      = 'midday';  // morning | midday | evening
   }
 
   async start(rfBpm = 6) {
     await Tone.start();
-    this._rfBpm = rfBpm;
+    this._rfBpm          = rfBpm;
+    this._sessionStartMs = Date.now();
+    this._circadian      = this._getCircadianContext();
     this.binaural.start();
     this.breath.start(rfBpm);
+    this._startSomaCarrier();
 
     // Chord engine needs carrier from first phase to set root pitch
     const firstPhase = Object.keys(this._sessionCfg.phases)[0];
     const firstCfg   = this._sessionCfg.phases[firstPhase];
-    await this._chord.start(firstCfg?.carrier ?? 256, 1);
+    await this._chord.start(firstCfg?.carrier ?? 256, 1, this.sessionType);
 
     this._applyPhase(firstPhase, false);
     this._started = true;
@@ -79,7 +96,15 @@ export class SessionAudio {
     this._chord.dispose();
     Object.values(this._stems).forEach(l => { try { l.stop();    } catch (_) {} });
     Object.values(this._stems).forEach(l => { try { l.dispose(); } catch (_) {} });
-    this._started = false;
+    try { this._organic.stop();    } catch (_) {}
+    try { this._organic.dispose(); } catch (_) {}
+    this._soma.forEach(osc => { try { osc.stop(); osc.dispose(); } catch (_) {} });
+    this._soma = [];
+    try { this._somaLFO?.stop(); this._somaLFO?.dispose(); } catch (_) {}
+    try { this._somaGain?.dispose(); } catch (_) {}
+    this._somaLFO  = null;
+    this._somaGain = null;
+    this._started  = false;
   }
 
   updateRF(rfBpm) {
@@ -91,6 +116,7 @@ export class SessionAudio {
   updateMusicParams(params) {
     if (!this._started || !params) return;
     this._lastParams = params;
+    this._updateArc();
 
     // ISO bridge: update current ANS estimate from backend affect data
     const arousal = params.affect_arousal ?? params.arousal ?? null;
@@ -166,6 +192,15 @@ export class SessionAudio {
           this._chord.fadeOut(3000);
         }
         if (this._currentPhase) this._applyStemPhaseVolumes(this._currentPhase);
+
+        // Start organic variation after stems are running
+        this._organic.start({
+          ground:   this._stems.ground.volNode,
+          breath_s: this._stems.breath_s.volNode,
+          harmonic: this._stems.harmonic.volNode,
+          spatial:  this._stems.spatial.volNode,
+          morning:  this._stems.morning.volNode,
+        });
       }
     } catch (_) {
       // Network/parse error — chord engine + oscillator fallback already running
@@ -233,5 +268,46 @@ export class SessionAudio {
     if (this._stems.harmonic.isLoaded) {
       this._stems.harmonic.setVolume(presence * 0.6, 2000);
     }
+  }
+
+  // ── Phase 1B additions ──────────────────────────────────────────────────────
+
+  _startSomaCarrier() {
+    const SOMA_HZ = { find_your_calm: 60, wind_down: 60, morning_emergence: 52 };
+    const baseHz  = SOMA_HZ[this.sessionType] ?? 60;
+    const freqs   = [baseHz - 1, baseHz, baseHz + 1.5];
+
+    try {
+      this._somaGain = new Tone.Volume(-26);
+      this._somaGain.toDestination();
+
+      this._soma = freqs.map(f => {
+        const osc = new Tone.Oscillator({ type: 'sine', frequency: f });
+        osc.connect(this._somaGain);
+        osc.start();
+        return osc;
+      });
+
+      // 0.02 Hz LFO (50s cycle) — slow breathing sensation on carrier
+      this._somaLFO = new Tone.LFO({ frequency: 0.02, min: -30, max: -22, type: 'sine' }).start();
+      this._somaLFO.connect(this._somaGain.volume);
+    } catch (_) {
+      // SOMA carrier is additive — any failure is silent degradation
+    }
+  }
+
+  _getCircadianContext() {
+    const h = new Date().getHours();
+    if (h >= 5  && h < 10) return 'morning';
+    if (h >= 18 && h < 23) return 'evening';
+    return 'midday';
+  }
+
+  _updateArc() {
+    if (!this._sessionStartMs) return;
+    const elapsedMin = (Date.now() - this._sessionStartMs) / 60000;
+    if      (elapsedMin < 8)  this._arcPhase = 'ENTRAIN';
+    else if (elapsedMin < 20) this._arcPhase = 'SHIFT';
+    else                      this._arcPhase = 'INTEGRATE';
   }
 }
