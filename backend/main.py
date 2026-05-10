@@ -608,7 +608,7 @@ async def ws_session(
                 "posture_openness": None,
                 "sd2_sd1_ratio": _sd2_sd1_norm,
             }
-            vs_result = compute_vs_adaptive(vs_components, mode=current_mode, confidences={})
+            vs_result = compute_vs_adaptive(vs_components, mode=current_mode, confidences={}, session_type=session_profile)
             current_phase = session_manager.update(vs_result.get("vs", 0), _hrv_d)
 
             # --- Safety

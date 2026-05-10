@@ -1,5 +1,6 @@
 # backend/vs_score.py
 import numpy as np
+from .config import SESSION_RMSSD_DIRECTION
 
 WEIGHTS = {
     "lf_coherence": 0.25,
@@ -19,12 +20,17 @@ VS_COLOR_BANDS = [
 ]
 
 
-def compute_vs_adaptive(components: dict, mode: int, confidences: dict) -> dict:
+def compute_vs_adaptive(components: dict, mode: int, confidences: dict, session_type: str = "calm") -> dict:
     """
     Mode-adaptive VS score. Unavailable components have weight redistributed.
     Returns {"vs": int, "confidence": str, "components_used": list, "mode": int}
     """
     available = {k: v for k, v in components.items() if v is not None}
+
+    # Morning/activation sessions: a controlled RMSSD drop is success, not failure.
+    # Invert the trajectory component so the score reflects the correct direction.
+    if SESSION_RMSSD_DIRECTION.get(session_type, 1) == -1 and "rmssd_trajectory" in available:
+        available["rmssd_trajectory"] = 1.0 - float(available["rmssd_trajectory"])
     if not available:
         return {"vs": 0, "confidence": "LOW", "components_used": [], "mode": mode}
 

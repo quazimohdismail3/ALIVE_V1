@@ -35,8 +35,6 @@ WHOOP_REDIRECT_URI = _get("WHOOP_REDIRECT_URI", "http://localhost:8000/whoop/cal
 SPOTIFY_CLIENT_ID = _get("SPOTIFY_CLIENT_ID", "")
 SPOTIFY_CLIENT_SECRET = _get("SPOTIFY_CLIENT_SECRET", "")  # [env] no default - set in .env
 
-# --- Gemini (V1: stubbed, not required)
-GEMINI_API_KEY = _get("GEMINI_API_KEY", "")
 
 # --- Control loop
 CONTROL_HZ = 1.0  # 1 Hz cycle
@@ -46,7 +44,7 @@ KD = 0.8
 CONFIDENCE_GATE = 0.75
 RMSSD_DELTA_THRESHOLD = 5.0  # ms
 STATE_CHANGE_CONFIRM_CYCLES = 2
-MIN_RR_FOR_METRICS = 15
+MIN_RR_FOR_METRICS = 10
 PARAM_RAMP_MS = 2000
 
 # --- Safety thresholds
@@ -54,3 +52,19 @@ SAFETY_RMSSD_LOW = 15.0
 SAFETY_RMSSD_HIGH = 200.0
 SAFETY_STATE_DELTA_MAX = 0.4
 SAFETY_LOW_CYCLES = 3
+
+# --- Session-conditional RMSSD direction for VS score
+# +1 = rising RMSSD scores higher (calm / sleep sessions)
+# -1 = controlled RMSSD drop scores higher (morning / activation sessions)
+# UNTUNED — theoretical priors from first-principles physiology.
+# Update after ≥3 real H10 sessions per type before treating as calibrated.
+SESSION_RMSSD_DIRECTION: dict[str, int] = {
+    "calm": 1,
+    "find_your_calm": 1,
+    "recovery": 1,
+    "wind_down": 1,
+    "breathwork": 1,
+    "adhd": 1,
+    "morning_emergence": -1,
+    "energy": -1,
+}
