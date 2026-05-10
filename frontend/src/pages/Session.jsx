@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, useCallback } from 'react';
+﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import { WSClient } from '../utils/ws_client.js';
 import { supabase } from '../lib/supabase.js';
 import { SessionAudio } from '../audio/session_audio.js';
@@ -13,6 +13,7 @@ import { SensorStatusBar } from '../components/SensorStatusBar.jsx';
 import { SessionTimeline } from '../components/SessionTimeline.jsx';
 import { DiscardSheet } from '../components/DiscardSheet.jsx';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
+import { useSensorContext } from '../context/SensorContext.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 // VS score → color band (matches backend vs_score.py)
@@ -46,6 +47,7 @@ async function postSessionEnd(summary) {
 export default function Session({ cfg, onEnd, onDiscard }) {
   const { session, sensorMode, backendMode, timezone, rfBpm, durationS } = cfg ?? {};
   const sessionDurationS = durationS ?? 600;
+  const { bleRef, bleStatus } = useSensorContext();
   const { acquire, release } = useWakeLock();
   const { push: accumPush, summarize, reset: accumReset } = useSessionAccum();
   usePhase2RFConvergence();
@@ -128,7 +130,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
       // Setup must hand off a started fusion. If absent (direct nav / refresh)
       // we still create one, but flag sensorReady=false until a real reading arrives.
-      const fusion = cfg?.fusion ?? new SensorFusion(sensorMode ?? 1);
+      const fusion = cfg?.fusion ?? new SensorFusion(sensorMode ?? 1, { externalBle: bleRef.current });
       fusionRef.current = fusion;
       if (!cfg?.fusion) fusion.start().catch(() => {});
       setSensorReady(!!cfg?.fusion);
@@ -150,14 +152,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
       // RR + resp_amp send loop
       sendIvRef.current = setInterval(() => {
-        const reading = fusion.getReading();
-        if (!reading) return;
-        if (!sensorReady) setSensorReady(true);
-        const rrs = Array.isArray(reading.rr?.rr_ms) ? reading.rr.rr_ms.slice(-5) : [];
-        rrs.forEach(rr => ws.send({ rr, resp_amp: reading.resp_amp ?? 0 }));
-        // Also send a respiration-only frame if no RR available, so backend coherence has data
-        if (rrs.length === 0 && (reading.resp_amp ?? 0) > 0) {
-          ws.send({ resp_amp: reading.resp_amp });
+        if (!fusionRef.current) return;
+        const newRRs = fusionRef.current.drainNew ? fusionRef.current.drainNew() : [];
+        const reading = fusionRef.current.getReading();
+        const respAmp = reading?.resp_amp ?? 0;
+        if (newRRs.length > 0) {
+          if (!sensorReady) setSensorReady(true);
+          newRRs.forEach(rr => ws.send({ rr, resp_amp: respAmp }));
+        } else if (respAmp > 0) {
+          ws.send({ resp_amp: respAmp });
         }
       }, 500);
     }
@@ -297,6 +300,14 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         <div style={{ color: 'var(--text-dim)', fontSize: 13, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
           {session?.replace(/_/g, ' ')}
         </div>
+        {bleStatus === 'connected' ? (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 11, color: '#00D084' }}>
+            <div style={{ width: 6, height: 6, borderRadius: '50%', background: '#00D084', boxShadow: '0 0 6px #00D084' }} />
+            H10
+          </div>
+        ) : bleStatus === 'reconnecting' ? (
+          <div style={{ fontSize: 11, color: '#EF9F27' }}>H10 reconnecting…</div>
+        ) : null}
         <div style={{ display: 'flex', gap: 8 }}>
           <button
             onClick={() => setShowDiscard(true)}
@@ -326,11 +337,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
             <div style={{ color: 'var(--text-dim)', fontSize: 13 }}>
               {wsStatus === 'connecting'
                 ? 'Connecting…'
-                : lastStatus?.status === 'low_sqi'
-                  ? `Low signal quality — keep finger still (SQI ${(lastStatus.sqi * 100).toFixed(0)}%)`
-                  : lastStatus?.status === 'buffering'
-                    ? `Buffering HRV — ${lastStatus.n_rr ?? 0} RR collected, need ~30`
-                    : 'Buffering HRV data…'}
+                : bleStatus === 'reconnecting'
+                  ? 'H10 reconnecting — keep strap on chest…'
+                  : bleStatus === 'failed'
+                    ? 'H10 disconnected — check strap'
+                    : lastStatus?.status === 'low_sqi'
+                      ? `Low signal quality (SQI ${(lastStatus.sqi * 100).toFixed(0)}%)`
+                      : lastStatus?.status === 'buffering'
+                        ? `Buffering HRV — ${lastStatus.n_rr ?? 0} RR collected, need ~30`
+                        : 'Buffering HRV data…'}
             </div>
           )}
         </div>

@@ -87,4 +87,8 @@ export class SensorFusion {
             mode: this.mode,
         };
     }
+
+    drainNew() {
+        return this.sensors.h10?.drainNew?.() ?? [];
+    }
 }

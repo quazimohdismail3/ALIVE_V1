@@ -53,18 +53,12 @@ function AppRoutes() {
     }
   }, [profile, screen])
 
-  const isOnboarding = profile?.calibration_done === false
-
   const handleConnectionReady = useCallback(async (readyCfg) => {
     setCfg(readyCfg)
-    if (isOnboarding) {
-      const p = await getProfile()
-      setProfile(p)
-      setScreen('landing')
-    } else {
-      setScreen('session')
-    }
-  }, [isOnboarding])
+    const p = await getProfile()
+    setProfile(p)
+    setScreen('landing')
+  }, [])
 
   if (loading) {
     return (
@@ -111,7 +105,7 @@ function AppRoutes() {
       return (
         <ConnectionRitual
           cfg={cfg}
-          isOnboarding={isOnboarding}
+          isOnboarding={profile?.calibration_done === false}
           onReady={handleConnectionReady}
           onBack={() => setScreen('landing')}
         />
@@ -141,7 +135,17 @@ function AppRoutes() {
           savedRfBpm={profile?.rf_bpm ?? 5.5}
           bleStatus={bleStatus}
           onConnectH10={requestBle}
-          onStart={(c) => { setCfg({ ...c, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone }); setScreen('connection') }}
+          onStart={(c) => {
+            const rfBpm = c.skipCalibration ? (c.rfBpm ?? profile?.rf_bpm ?? 5.5) : (profile?.rf_bpm ?? 5.5)
+            const rfLocked = profile?.rf_locked ?? false
+            setCfg({ ...c, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, rfBpm, rfLocked })
+            // Skip calibration for users who already have an rf_bpm from a prior calibration
+            if (profile?.calibration_done && profile?.rf_bpm) {
+              setScreen('session')
+            } else {
+              setScreen('connection')
+            }
+          }}
         />
       )
   }
