@@ -44,6 +44,9 @@ class HRVMetrics:
     mean_sqi: float = 1.0        # signal quality index proxy (0–1)
     hr_drift_bpm: float = 0.0    # HR drift = max(HR) − min(HR) over session
     rf_hz: float | None = None   # RR-derived respiratory frequency (Hz); None < 30s data
+    hf_power: float | None = None      # ms² — HF band 0.15–0.4 Hz (parasympathetic)
+    lf_power: float | None = None      # ms² — LF band 0.04–0.15 Hz (sympathovagal)
+    lf_hf_ratio: float | None = None   # LF/HF ratio
 
     def to_dict(self) -> dict:
         return asdict(self)
@@ -98,6 +101,9 @@ class HRVProcessor:
         mean_sqi = max(0.0, min(1.0, 1.0 - artifact_rate))
         hr_drift_bpm = self._hr_drift(rr_long)
 
+        # Frequency domain (requires >= 60 RRs for reliable estimates)
+        hf_power, lf_power, lf_hf_ratio = self._freq_domain(rr_long)
+
         return HRVMetrics(
             rmssd=rmssd,
             sdnn=sdnn,
@@ -113,6 +119,9 @@ class HRVProcessor:
             mean_sqi=mean_sqi,
             hr_drift_bpm=hr_drift_bpm,
             rf_hz=rf_hz,
+            hf_power=hf_power,
+            lf_power=lf_power,
+            lf_hf_ratio=lf_hf_ratio,
         )
 
     @staticmethod
@@ -157,6 +166,38 @@ class HRVProcessor:
         if len(hr_means) < 2:
             return 0.0
         return float(max(hr_means) - min(hr_means))
+
+    @staticmethod
+    def _freq_domain(rr: np.ndarray) -> tuple[float | None, float | None, float | None]:
+        """Simple FFT-based LF/HF power. Requires >= 60 RR intervals for reliable estimates.
+        Returns (hf_power, lf_power, lf_hf_ratio) in ms² or (None, None, None) if insufficient data."""
+        if rr.size < 60:
+            return None, None, None
+        try:
+            # Resample RR to 4Hz evenly-spaced using linear interpolation
+            cumtime = np.cumsum(rr) / 1000.0  # cumulative time in seconds
+            fs = 4.0
+            t_uniform = np.arange(cumtime[0], cumtime[-1], 1.0 / fs)
+            if len(t_uniform) < 32:
+                return None, None, None
+            rr_uniform = np.interp(t_uniform, cumtime, rr)
+            rr_uniform -= np.mean(rr_uniform)  # detrend (mean removal)
+            # Welch-like: use Hanning window on full signal
+            N = len(rr_uniform)
+            window = np.hanning(N)
+            fft_vals = np.fft.rfft(rr_uniform * window)
+            freqs = np.fft.rfftfreq(N, d=1.0 / fs)
+            psd = (np.abs(fft_vals) ** 2) / (fs * N)  # one-sided PSD (ms²/Hz)
+            df = freqs[1] - freqs[0] if len(freqs) > 1 else 1.0
+            # Integrate bands
+            lf_mask = (freqs >= 0.04) & (freqs < 0.15)
+            hf_mask = (freqs >= 0.15) & (freqs < 0.40)
+            lf_power = float(np.sum(psd[lf_mask]) * df)
+            hf_power = float(np.sum(psd[hf_mask]) * df)
+            lf_hf = lf_power / max(hf_power, 0.01)
+            return round(hf_power, 2), round(lf_power, 2), round(lf_hf, 3)
+        except Exception:
+            return None, None, None
 
     @staticmethod
     def _dfa_alpha1(rr: np.ndarray) -> float:

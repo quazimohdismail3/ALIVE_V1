@@ -1,4 +1,4 @@
-"""ANS Classifier — L3 Polyvagal state classification.
+﻿"""ANS Classifier — L3 Polyvagal state classification.
 
 Five states (Porges):
   - ventral_vagal       (regulated, social)
@@ -7,8 +7,8 @@ Five states (Porges):
   - dorsal_vagal        (shutdown, freeze)
   - burnout_rigidity    (depletion, low variability)
 
-Confidence ≥0.75 required to act on a classification (CONFIDENCE_GATE).
-Runs in parallel with affect_classifier (L4) — never sequential.
+Confidence >=0.75 required to act on a classification (CONFIDENCE_GATE).
+Runs in parallel with affect_classifier (L4) -- never sequential.
 """
 from __future__ import annotations
 from dataclasses import dataclass
@@ -38,13 +38,20 @@ class ANSClassification:
         return self.confidence >= CONFIDENCE_GATE
 
 
-def classify(m: HRVMetrics, rmssd_norm: float, rf_hz: float | None = None, rf_error: float | None = None) -> ANSClassification:
+def classify(m: HRVMetrics | None, rmssd_norm: float = 0.5, rf_hz: float | None = None, rf_error: float | None = None) -> ANSClassification:
     """Score each polyvagal state from HRV metrics.
 
     rmssd_norm is the personal-percentile normalized RMSSD (0..1).
     rf_hz and rf_error are optional RF entrainment signals; when provided,
     a confidence_tag is derived from the 4-quadrant RF model.
     """
+    if m is None:
+        return ANSClassification(
+            state="ventral_vagal",
+            confidence=0.0,
+            scores={s: 0.2 for s in STATES},
+            confidence_tag="UNKNOWN",
+        )
     s: dict[str, float] = {}
 
     # Ventral vagal: high RMSSD, balanced SD1/SD2, moderate DFA
@@ -76,7 +83,7 @@ def classify(m: HRVMetrics, rmssd_norm: float, rf_hz: float | None = None, rf_er
     )
 
     # Burnout rigidity: clinically requires ABSOLUTE low RMSSD AND low SVI.
-    # Gate by absolute RMSSD < 30ms — otherwise score is forced to ~0.
+    # Gate by absolute RMSSD < 30ms -- otherwise score is forced to ~0.
     if m.rmssd < 30.0:
         s["burnout_rigidity"] = (
             0.5 * (1.0 - rmssd_norm)
@@ -85,16 +92,16 @@ def classify(m: HRVMetrics, rmssd_norm: float, rf_hz: float | None = None, rf_er
     else:
         s["burnout_rigidity"] = 0.05
 
-    # Sharpen scores (power=4) before normalizing — preserves the 0.75 gate
+    # Sharpen scores (power=4) before normalizing -- preserves the 0.75 gate
     # by making the winning state dominate when its evidence is strong.
     # Bell-curve scoring is naturally soft; raising to a power converts
-    # "moderate winner" → "clear winner" without changing the ranking.
+    # "moderate winner" -> "clear winner" without changing the ranking.
     sharpened = {k: max(v, 1e-6) ** 4 for k, v in s.items()}
     total = sum(sharpened.values()) or 1.0
     probs = {k: v / total for k, v in sharpened.items()}
     state = max(probs, key=probs.get)
     confidence = probs[state]
-    # RF confidence tag — sharpens ANS state with entrainment signal
+    # RF confidence tag -- sharpens ANS state with entrainment signal
     if rf_hz is not None and rf_error is not None:
         at_resonance = rf_error < 0.008  # within ~0.5 BPM of personal RF
         if state == "ventral_vagal" and at_resonance:

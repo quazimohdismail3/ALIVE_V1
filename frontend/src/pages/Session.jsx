@@ -215,7 +215,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     if (sendStop) wsRef.current?.send({ cmd: 'stop' });
     wsRef.current?.close();
     wsRef.current = null;
-    fusionRef.current?.stop?.();
+    if (!cfg?.fusion) fusionRef.current?.stop?.();  // only stop if we created it
     fusionRef.current = null;
     audioRef.current?.stop?.();
     audioRef.current = null;

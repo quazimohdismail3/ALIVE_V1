@@ -164,8 +164,10 @@ async def get_profile(user_id: str) -> Optional[Profile]:
 async def set_calibration_done(
     user_id: str,
     rf_bpm: float,
-    rf_confidence_tag: str,
+    rf_confidence_tag: str = "DRAFT",
 ) -> None:
+    if _pool is None:
+        return
     async with _pool.acquire() as conn:
         await conn.execute(
             """

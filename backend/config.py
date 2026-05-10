@@ -1,4 +1,4 @@
-"""Mission Alive — central config. All env vars loaded here only."""
+﻿"""Mission Alive â€” central config. All env vars loaded here only."""
 import os
 from pathlib import Path
 from dotenv import load_dotenv
@@ -28,12 +28,12 @@ PERSONAL_RMSSD_MEAN = _getf("PERSONAL_RMSSD_MEAN", 88.0)
 
 # --- WHOOP
 WHOOP_CLIENT_ID = _get("WHOOP_CLIENT_ID", "")
-WHOOP_CLIENT_SECRET = _get("WHOOP_CLIENT_SECRET", "")
+WHOOP_CLIENT_SECRET = _get("WHOOP_CLIENT_SECRET", "")  # [env] no default - set in .env
 WHOOP_REDIRECT_URI = _get("WHOOP_REDIRECT_URI", "http://localhost:8000/whoop/callback")
 
 # --- Spotify
 SPOTIFY_CLIENT_ID = _get("SPOTIFY_CLIENT_ID", "")
-SPOTIFY_CLIENT_SECRET = _get("SPOTIFY_CLIENT_SECRET", "")
+SPOTIFY_CLIENT_SECRET = _get("SPOTIFY_CLIENT_SECRET", "")  # [env] no default - set in .env
 
 # --- Gemini (V1: stubbed, not required)
 GEMINI_API_KEY = _get("GEMINI_API_KEY", "")
@@ -46,7 +46,7 @@ KD = 0.8
 CONFIDENCE_GATE = 0.75
 RMSSD_DELTA_THRESHOLD = 5.0  # ms
 STATE_CHANGE_CONFIRM_CYCLES = 2
-MIN_RR_FOR_METRICS = 30
+MIN_RR_FOR_METRICS = 15
 PARAM_RAMP_MS = 2000
 
 # --- Safety thresholds
