@@ -278,7 +278,7 @@ export class SessionAudio {
     const freqs   = [baseHz - 1, baseHz, baseHz + 1.5];
 
     try {
-      this._somaGain = new Tone.Volume(-26);
+      this._somaGain = new Tone.Volume(-52);
       this._somaGain.toDestination();
 
       this._soma = freqs.map(f => {
@@ -289,7 +289,7 @@ export class SessionAudio {
       });
 
       // 0.02 Hz LFO (50s cycle) — slow breathing sensation on carrier
-      this._somaLFO = new Tone.LFO({ frequency: 0.02, min: -30, max: -22, type: 'sine' }).start();
+      this._somaLFO = new Tone.LFO({ frequency: 0.02, min: -58, max: -48, type: 'sine' }).start();
       this._somaLFO.connect(this._somaGain.volume);
     } catch (_) {
       // SOMA carrier is additive — any failure is silent degradation

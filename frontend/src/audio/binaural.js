@@ -7,11 +7,12 @@ export class BinauralGenerator {
         // Panner nodes to separate L and R channels
         this._leftPan = new Tone.Panner(-1).toDestination();
         this._rightPan = new Tone.Panner(1).toDestination();
-        this._leftOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._leftPan);
-        this._rightOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._rightPan);
+        this._leftVol = new Tone.Volume(-38).connect(this._leftPan);
+        this._rightVol = new Tone.Volume(-38).connect(this._rightPan);
+        this._leftOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._leftVol);
+        this._rightOsc = new Tone.Oscillator({ type: 'sine' }).connect(this._rightVol);
         this._carrier = 200;
         this._beat = 7.5;
-        this._vol = new Tone.Volume(-12).toDestination();
     }
 
     start() {
@@ -43,7 +44,7 @@ export class BinauralGenerator {
 
     setVolume(vol, rampMs = 2000) {
         const db = vol <= 0 ? -60 : Tone.gainToDb(Math.max(0.001, vol));
-        this._leftOsc.volume.rampTo(db, Math.max(rampMs, 2000) / 1000);
-        this._rightOsc.volume.rampTo(db, Math.max(rampMs, 2000) / 1000);
+        this._leftVol.volume.rampTo(db, Math.max(rampMs, 2000) / 1000);
+        this._rightVol.volume.rampTo(db, Math.max(rampMs, 2000) / 1000);
     }
 }

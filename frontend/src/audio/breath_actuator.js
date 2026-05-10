@@ -8,6 +8,7 @@ export class BreathActuator {
             oscillator: { type: 'sine' },
             envelope: { attack: 1.8, decay: 0, sustain: 1, release: 1.8 },
         }).toDestination();
+        this._synth.volume.value = -60;
         this._rfBpm = 6;
         this._running = false;
         this._timeout = null;
