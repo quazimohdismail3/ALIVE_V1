@@ -22,6 +22,8 @@ export class ChordEngine {
     this._reverb      = null;
     this._pad         = null;
     this._volNode     = null;
+    this._lpf         = null;
+    this._chorus      = null;
     this._started     = false;
     this._active      = false; // stays false until activateFallback() is called
     this._rootMidi    = hzToMidi(256);
@@ -46,8 +48,12 @@ export class ChordEngine {
       oscillator: { type: 'triangle' },
       envelope:   { attack: 4.5, decay: 2.0, sustain: 0.6, release: 9.0 },
     });
+    this._lpf    = new Tone.Filter({ frequency: 6000, type: 'lowpass', rolloff: -12 });
+    this._chorus = new Tone.Chorus({ frequency: 0.4, delayTime: 3.5, depth: 0.15 }).start();
     this._pad.connect(this._volNode);
-    this._volNode.connect(this._reverb);
+    this._volNode.connect(this._lpf);
+    this._lpf.connect(this._chorus);
+    this._chorus.connect(this._reverb);
     this._reverb.toDestination();
 
     this._started = true;
@@ -69,7 +75,7 @@ export class ChordEngine {
     this._volNode.volume.rampTo(-46, rampMs / 1000);
   }
 
-  setParams({ keyMode, rootHz, tension, presence } = {}) {
+  setParams({ keyMode, rootHz, tension, presence, brightness, warmth, roughness } = {}) {
     if (!this._started || !this._active) return;
     let reVoice = false;
 
@@ -86,6 +92,22 @@ export class ChordEngine {
       // Very quiet fallback range: -50 to -40 dB — pad should not dominate
       const db = -50 + Math.max(0, Math.min(1, presence)) * 10;
       this._volNode?.volume.rampTo(db, 2);
+    }
+    if (brightness !== undefined) {
+      // Low brightness = dark/warm (500Hz), high = bright (8000Hz)
+      const cutoff = 500 + Math.max(0, Math.min(1, brightness)) * 7500;
+      this._lpf?.frequency.rampTo(cutoff, 3);
+    }
+    if (warmth !== undefined) {
+      // Warmth → chorus depth: 0 = dry, 1 = lush
+      // Tone.Chorus.depth is a plain number, not an AudioParam — assign directly
+      const depth = Math.max(0, Math.min(1, warmth)) * 0.35;
+      if (this._chorus) this._chorus.depth = depth;
+    }
+    if (roughness !== undefined) {
+      // Roughness → slight detune on PolySynth voices
+      const detune = Math.max(0, Math.min(1, roughness)) * 18; // 0–18 cents
+      this._pad?.set({ detune });
     }
     if (reVoice) this._voiceLead();
   }
@@ -117,6 +139,8 @@ export class ChordEngine {
     this.stop();
     try { this._pad?.dispose();     } catch (_) {}
     try { this._volNode?.dispose(); } catch (_) {}
+    try { this._lpf?.dispose();     } catch (_) {}
+    try { this._chorus?.dispose();  } catch (_) {}
     try { this._reverb?.dispose();  } catch (_) {}
   }
 

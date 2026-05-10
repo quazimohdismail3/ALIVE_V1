@@ -135,14 +135,15 @@ export class SessionAudio {
   }
 
   // Called every 1Hz — wires backend music_params + ANS state
-  updateMusicParams(params) {
+  updateMusicParams(params, affect) {
     if (!this._started || !params) return;
     this._lastParams = params;
     this._updateArc();
 
     // ISO bridge: update current ANS estimate from backend affect data
-    const arousal = params.affect_arousal ?? params.arousal ?? null;
-    const valence = params.affect_valence ?? params.valence ?? null;
+    // msg.affect = { arousal, valence, quadrant } — keys are NOT prefixed with "affect_"
+    const arousal = affect?.arousal ?? params.arousal ?? null;
+    const valence = affect?.valence ?? params.valence ?? null;
     if (arousal !== null) this._ansState.arousal = arousal;
     if (valence !== null) this._ansState.valence = valence;
 
@@ -155,13 +156,27 @@ export class SessionAudio {
       this.binaural.set(bridgeBeat, carrierHz, BINAURAL_GLIDE_MS);
     }
 
-    // Chord engine: update params (only has effect if chord is active as fallback)
+    // Chord engine: full 7-param update (only has effect if chord is active as fallback)
     this._chord.setParams({
-      keyMode:  params.key_mode,
-      rootHz:   params.soma_carrier_hz,
-      tension:  params.harmonic_tension,
-      presence: params.voice_range_presence ?? 0.4,
+      keyMode:    params.key_mode,
+      rootHz:     params.soma_carrier_hz,
+      tension:    params.harmonic_tension,
+      presence:   params.voice_range_presence ?? 0.4,
+      brightness: params.brightness,
+      warmth:     params.warmth,
+      roughness:  params.roughness,
     });
+
+    // Organic variation: spatial width + micro-variation intensity (1Hz live update)
+    if (params.spatial_width   !== undefined) this._organic.setSpatialWidth(params.spatial_width);
+    if (params.micro_variation !== undefined) this._organic.setVariationIntensity(params.micro_variation);
+
+    // BPM → Tone.Transport (8s ramp — slow enough to avoid perceptible tempo jumps)
+    // Formula (backend): 60 + rmssd_norm×40 + arousal×10 → ISO principle: slow = calm
+    const bpm = params.bpm ?? null;
+    if (bpm !== null) {
+      try { Tone.getTransport().bpm.rampTo(Math.max(40, Math.min(120, bpm)), 8); } catch (_) {}
+    }
 
     // Stem layer volumes driven by ANS scalars
     this._applyStemVolumesMusicParams(params);
