@@ -34,6 +34,7 @@ class ProfileOut(BaseModel):
     calibration_done:  bool            = False
     rf_bpm:            Optional[float] = None
     rf_confidence_tag: Optional[str]   = None
+    rf_locked:         bool            = False
 
 
 @router.get("/profile", response_model=ProfileOut)
@@ -96,4 +97,5 @@ async def patch_calibration(
         calibration_done=True,
         rf_bpm=body.rf_bpm,
         rf_confidence_tag=tag,
+        rf_locked=body.rf_locked,
     )

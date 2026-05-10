@@ -358,6 +358,8 @@ async def ws_session(
                         "sdnn":  round(_cm.sdnn,  1),
                         "hr":    round(_cm.hr,    1),
                         "artifact_rate": round(_cm.artifact_rate, 4),
+                        "hf_power": round(getattr(_cm, "hf_power", None), 2) if getattr(_cm, "hf_power", None) is not None else None,
+                        "lf_power": round(getattr(_cm, "lf_power", None), 2) if getattr(_cm, "lf_power", None) is not None else None,
                     } if _cm is not None else None,
                 })
         except WebSocketDisconnect:
