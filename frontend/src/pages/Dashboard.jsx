@@ -26,16 +26,6 @@ function circadianBadge(sessionId) {
   return { label: 'Not ideal', color: '#7A7A96' }
 }
 
-// ── Sensor modes ──────────────────────────────────────────────────────────────
-const MODES = [
-  { sensorMode: 1, backendMode: 1, key: 'phone',    label: 'Phone Only',        badge: 'Medium confidence',
-    desc: 'Rear camera rPPG + mic. No hardware needed.' },
-  { sensorMode: 2, backendMode: 2, key: 'h10',      label: 'Polar H10',         badge: 'High confidence',
-    desc: 'ECG-grade RR intervals. Cleanest HRV signal.' },
-  { sensorMode: 3, backendMode: 3, key: 'combined', label: 'Phone + Polar H10', badge: 'Highest confidence', star: true,
-    desc: 'All sensors combined. Best science.' },
-]
-
 // ── Sub-components ────────────────────────────────────────────────────────────
 function SessionHistoryCard({ session }) {
   const date = session.started_at
@@ -91,12 +81,10 @@ function RecommendationCard({ rec }) {
 }
 
 // ── Main Dashboard ────────────────────────────────────────────────────────────
-export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm = 5.5, bleStatus: bleStatusProp, onConnectH10 }) {
+export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusProp }) {
   const { user, signOut } = useAuth()
-  const { latestRR, bleStatus: bleStatusCtx, requestBle } = useSensorContext()
-  // Prefer prop (passed from App-level gesture handler) but fall back to context
+  const { latestRR, latestHR, bleStatus: bleStatusCtx } = useSensorContext()
   const bleStatus = bleStatusProp ?? bleStatusCtx
-  const handleConnectH10 = onConnectH10 ?? requestBle
 
   const SESSION_LIST = getSessionList()
   const DEFAULT_SESSION_ID = SESSION_LIST[0].id
@@ -105,13 +93,8 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
   const [sessions, setSessions]       = useState([])
   const [recs, setRecs]               = useState([])
   const [loadingData, setLoadingData] = useState(true)
-  const [modeKey, setModeKey]         = useState('h10')
   const [sessionId, setSessionId]     = useState(DEFAULT_SESSION_ID)
   const [durationS, setDurationS]     = useState(DEFAULT_DURATION_S)
-
-  const latestHR = latestRR.length > 0
-    ? Math.round(60000 / latestRR[latestRR.length - 1])
-    : null
 
   useEffect(() => {
     let cancelled = false
@@ -134,50 +117,66 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
     return out
   }, [])
 
-  const selectedMode = MODES.find(m => m.key === modeKey) ?? MODES[1]
-
   function handleSelectSession(id) {
     setSessionId(id)
     setDurationS(SESSIONS[id].durations[0].value)
   }
 
-  function handleStart(skipCalibration = false) {
+  function handleStart() {
     onStart({
       session: sessionId,
-      sensorMode: selectedMode.sensorMode,
-      backendMode: selectedMode.backendMode,
+      sensorMode: 2,
+      backendMode: 2,
       durationS,
-      ...(skipCalibration && { skipCalibration: true, rfBpm: savedRfBpm, rfLocked: false }),
     })
   }
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden' }}>
-      <style>{`
-        @keyframes hrOrbPulse {
-          0%   { transform: scale(1.0); opacity: 0.85; }
-          50%  { transform: scale(1.08); opacity: 1; }
-          100% { transform: scale(1.0); opacity: 0.85; }
-        }
-      `}</style>
 
-      {latestHR != null && bleStatus === 'connected' && (
-        <div style={{
-          position: 'fixed', top: 16, left: 16, zIndex: 20,
-          width: 56, height: 56, borderRadius: '50%',
-          background: 'radial-gradient(circle, rgba(124,111,247,0.35) 0%, transparent 70%)',
-          border: '1.5px solid rgba(124,111,247,0.5)',
-          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-          animation: `hrOrbPulse ${(60000 / latestHR / 1000).toFixed(2)}s ease-in-out infinite`,
-        }}>
-          <span style={{ fontSize: 13, fontWeight: 700, color: '#fff', lineHeight: 1 }}>{latestHR}</span>
-          <span style={{ fontSize: 8, color: 'var(--text-dim)', marginTop: 1 }}>bpm</span>
+      {/* Live biometric status bar */}
+      <div style={{
+        position: 'sticky', top: 0, zIndex: 10,
+        background: 'rgba(10,10,15,0.92)',
+        backdropFilter: 'blur(12px)',
+        borderBottom: '1px solid rgba(255,255,255,0.05)',
+        padding: '10px 20px',
+        display: 'flex', alignItems: 'center', gap: 20,
+      }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: '50%',
+            background: bleStatus === 'connected' ? '#00D084' :
+                        bleStatus === 'reconnecting' ? '#EF9F27' : 'rgba(255,255,255,0.18)',
+            boxShadow: bleStatus === 'connected' ? '0 0 8px rgba(0,208,132,0.6)' : 'none',
+            transition: 'background 0.3s, box-shadow 0.3s',
+          }} />
+          <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.38)' }}>H10</span>
         </div>
-      )}
+        <div style={{ display: 'flex', alignItems: 'baseline', gap: 3 }}>
+          <span style={{
+            fontSize: 24, fontWeight: 700, lineHeight: 1, fontVariantNumeric: 'tabular-nums',
+            color: bleStatus === 'connected' && latestHR ? '#fff' : 'rgba(255,255,255,0.18)',
+          }}>
+            {bleStatus === 'connected' && latestHR ? latestHR : '—'}
+          </span>
+          <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)' }}>bpm</span>
+        </div>
+        {cfg?.rfBpm && (
+          <div style={{ marginLeft: 'auto', display: 'flex', alignItems: 'baseline', gap: 4 }}>
+            <span style={{ fontSize: 11, color: 'rgba(255,255,255,0.32)' }}>RF</span>
+            <span style={{ fontSize: 16, fontWeight: 700, color: cfg.rfLocked ? '#3FBFA8' : '#EF9F27', fontVariantNumeric: 'tabular-nums' }}>
+              {cfg.rfBpm.toFixed(1)}
+            </span>
+            <span style={{ fontSize: 10, color: 'rgba(255,255,255,0.32)' }}>bpm</span>
+            {cfg.rfLocked && <span style={{ fontSize: 9, color: '#3FBFA8', marginLeft: 1 }}>locked</span>}
+          </div>
+        )}
+      </div>
 
       <div className="ambient-bg" />
 
-      <div style={{ position: 'relative', zIndex: 1, maxWidth: 480, margin: '0 auto', padding: '48px 20px 40px' }}>
+      <div style={{ position: 'relative', zIndex: 1, maxWidth: 480, margin: '0 auto', padding: '32px 20px 40px' }}>
 
         {/* Header */}
         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
@@ -195,61 +194,22 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
 
         {/* Live sensor status */}
         <div style={{ marginBottom: 16 }}>
-          <SensorStatusBar rfLocked={null} sqi={null} />
+          <SensorStatusBar rfLocked={cfg?.rfLocked ?? null} sqi={null} />
         </div>
 
-        {/* H10 persistent connection bar */}
-        {bleStatus !== 'connected' && (
-          <div style={{
-            margin: '0 0 16px',
-            padding: '12px 16px',
-            background: 'rgba(255,255,255,0.03)',
-            border: '1px solid rgba(255,255,255,0.08)',
-            borderRadius: 12,
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'space-between',
-            gap: 12,
-          }}>
+        {/* Today's calibration card */}
+        {cfg?.rfBpm && (
+          <div style={{ marginBottom: 20, padding: '14px 16px', background: 'rgba(63,191,168,0.05)', border: '1px solid rgba(63,191,168,0.18)', borderRadius: 14, display: 'flex', alignItems: 'center', gap: 14 }}>
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#3FBFA8', boxShadow: '0 0 8px rgba(63,191,168,0.5)', flexShrink: 0 }} />
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)' }}>Polar H10</div>
-              <div style={{ fontSize: 11, color: 'var(--text-dim)', marginTop: 2 }}>
-                {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting…' :
-                 bleStatus === 'failed' ? 'Not found — tap to retry' : 'Not connected'}
+              <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>Today&apos;s calibration</div>
+              <div style={{ fontSize: 14, fontWeight: 600, marginTop: 3 }}>
+                RF {cfg.rfBpm.toFixed(1)} bpm
+                {cfg.rfLocked
+                  ? <span style={{ color: '#3FBFA8', marginLeft: 8 }}>Locked</span>
+                  : <span style={{ color: '#EF9F27', marginLeft: 8 }}>Estimated</span>}
               </div>
             </div>
-            <button
-              onClick={handleConnectH10}
-              disabled={bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg'}
-              style={{
-                background: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'rgba(124,111,247,0.1)' : 'rgba(124,111,247,0.15)',
-                border: '1px solid rgba(124,111,247,0.4)',
-                borderRadius: 8,
-                padding: '7px 14px',
-                color: '#7C6FF7',
-                fontSize: 13,
-                fontWeight: 600,
-                cursor: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'not-allowed' : 'pointer',
-                flexShrink: 0,
-              }}
-            >
-              {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting…' : 'Connect'}
-            </button>
-          </div>
-        )}
-        {bleStatus === 'connected' && (
-          <div style={{
-            margin: '0 0 16px',
-            padding: '10px 16px',
-            background: 'rgba(0,208,132,0.06)',
-            border: '1px solid rgba(0,208,132,0.25)',
-            borderRadius: 12,
-            display: 'flex',
-            alignItems: 'center',
-            gap: 10,
-          }}>
-            <div style={{ width: 8, height: 8, borderRadius: '50%', background: '#00D084', boxShadow: '0 0 8px #00D084', flexShrink: 0 }} />
-            <div style={{ fontSize: 13, color: '#00D084', fontWeight: 600 }}>Polar H10 connected</div>
           </div>
         )}
 
@@ -284,8 +244,8 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
             {SESSION_LIST.map(s => {
-              const active     = sessionId === s.id
-              const badge      = badges[s.id]
+              const active      = sessionId === s.id
+              const badge       = badges[s.id]
               const accentColor = COLOR[s.colorKey] ?? 'var(--primary)'
 
               return (
@@ -348,53 +308,9 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
           </div>
         </div>
 
-        {/* Mode picker */}
-        <div style={{ marginBottom: 32 }}>
-          <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
-            Sensor mode
-          </div>
-          <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
-            {MODES.map(m => {
-              const active = modeKey === m.key
-              return (
-                <div
-                  key={m.key}
-                  onClick={() => setModeKey(m.key)}
-                  style={{
-                    padding: '12px 14px', borderRadius: 12, cursor: 'pointer',
-                    border: `1.5px solid ${active ? 'var(--primary)' : 'rgba(255,255,255,0.06)'}`,
-                    background: active ? 'rgba(124,111,247,0.10)' : 'var(--surface)',
-                    transition: 'border-color 200ms, background 200ms',
-                  }}
-                >
-                  <div style={{ fontWeight: 600, fontSize: 14 }}>{m.label}{m.star ? ' ✦' : ''}</div>
-                  <div style={{ color: 'var(--text-dim)', fontSize: 12, marginTop: 2 }}>{m.desc}</div>
-                  <div style={{ color: 'var(--primary)', fontSize: 11, marginTop: 3 }}>{m.badge}</div>
-                </div>
-              )
-            })}
-          </div>
-        </div>
-
-        {/* Connect H10 CTA */}
-        {(modeKey === 'h10' || modeKey === 'combined') && bleStatus !== 'connected' && (
-          <button
-            onClick={handleConnectH10}
-            disabled={bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg'}
-            style={{
-              width: '100%', background: 'transparent', color: '#7C6FF7',
-              border: '1.5px solid rgba(124,111,247,0.5)', borderRadius: 12, padding: '12px',
-              fontWeight: 600, fontSize: 14, cursor: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'not-allowed' : 'pointer',
-              marginBottom: 12, opacity: (bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 0.6 : 1,
-            }}
-          >
-            {(bleStatus === 'reconnecting' || bleStatus === 'fallback_rppg') ? 'Reconnecting to H10…' : 'Connect Polar H10'}
-          </button>
-        )}
-
         {/* Begin Session CTA */}
         <button
-          onClick={() => handleStart(false)}
+          onClick={handleStart}
           className="touch-target fade-slide-up"
           style={{
             width: '100%', background: 'var(--primary)', color: '#fff',
@@ -405,20 +321,6 @@ export default function Dashboard({ onStart, hasCalibrated = false, savedRfBpm =
         >
           Begin Session
         </button>
-
-        {/* Quick Start */}
-        {hasCalibrated && (
-          <button
-            onClick={() => handleStart(true)}
-            style={{
-              width: '100%', background: 'transparent', color: 'var(--text-dim)',
-              border: 'none', padding: '10px', fontSize: 13, cursor: 'pointer',
-              marginTop: 4,
-            }}
-          >
-            Quick Start — use last RF ({savedRfBpm.toFixed(1)} bpm)
-          </button>
-        )}
 
         {user?.email && (
           <div style={{ textAlign: 'center', color: 'var(--text-dim)', fontSize: 12, marginTop: 20 }}>

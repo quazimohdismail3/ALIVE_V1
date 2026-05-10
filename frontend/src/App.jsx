@@ -1,66 +1,72 @@
-﻿import { useState, useEffect, useCallback } from 'react'
+import { useState, useEffect, useCallback } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
+import SplashScreen from './pages/SplashScreen.jsx'
 import LandingPage from './pages/LandingPage.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
-import { getProfile } from './lib/api.js'
+import CalibrationScreen from './pages/CalibrationScreen.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Session from './pages/Session.jsx'
-import ConnectionRitual from './pages/ConnectionRitual.jsx'
 import Insight from './pages/Insight.jsx'
+import { getProfile } from './lib/api.js'
 
-/**
- * // Screens: login -> landing -> connection -> session -> insight
- * Discard path: session -> landing (bypasses insight)
-  */
 function AppRoutes() {
   const { user, loading } = useAuth()
-  const { requestBle, bleStatus } = useSensorContext()
-  const [screen, setScreen]       = useState('landing')
-  const [cfg, setCfg]             = useState(null)
+  const { bleStatus } = useSensorContext()
+  const [screen, setScreen] = useState('splash')
+  const [cfg, setCfg] = useState(null)
   const [insightData, setInsightData] = useState(null)
-  const [profile, setProfile]     = useState(undefined)  // undefined=loading, null=missing, obj=present
+  const [profile, setProfile] = useState(undefined)
   const [profileErr, setProfileErr] = useState(null)
-  const [profileRetry, setProfileRetry] = useState(0)
 
+  const handleSplashDone = useCallback(() => {
+    if (!user) setScreen('login')
+    else setScreen('profile-loading')
+  }, [user])
+
+  // Load profile whenever user changes
   useEffect(() => {
     if (!user) { setProfile(undefined); setProfileErr(null); return }
     let cancelled = false
     setProfile(undefined)
-    setProfileErr(null)
     ;(async () => {
       try {
         const p = await getProfile()
-        if (!cancelled) {
-          setProfile(p)
-          setProfileErr(null)
-        }
+        if (!cancelled) { setProfile(p); setProfileErr(null) }
       } catch (e) {
-        console.error('profile fetch failed', e)
         if (!cancelled) setProfileErr(e.message)
       }
     })()
     return () => { cancelled = true }
-  }, [user, profileRetry])
+  }, [user])
 
-  // First-time users must go through Setup (to init sensors/fusion) before Calibration
+  // Route once profile is loaded
   useEffect(() => {
-    if (profile && profile.calibration_done === false && screen === 'landing') {
-      setCfg({ rfBpm: 5.5, rfLocked: false, session: 'find_your_calm', backendMode: 2, sensorMode: 2, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone })
-      setScreen('connection')
-    }
-  }, [profile, screen])
+    if (screen !== 'profile-loading') return
+    if (profile === undefined && !profileErr) return
+    if (profileErr) { setScreen('login'); return }
+    if (profile === null) { setScreen('profile-setup'); return }
+    setScreen('calibration')
+  }, [profile, profileErr, screen])
 
-  const handleConnectionReady = useCallback(async (readyCfg) => {
+  // When auth state changes after splash, re-route
+  useEffect(() => {
+    if (screen === 'splash') return
+    if (!user && screen !== 'login') setScreen('login')
+  }, [user, screen])
+
+  const handleCalibrationReady = useCallback((readyCfg) => {
     setCfg(readyCfg)
-    const p = await getProfile()
-    setProfile(p)
-    setScreen('landing')
+    setScreen('dashboard')
   }, [])
 
-  if (loading) {
+  if (screen === 'splash') {
+    return <SplashScreen onDone={handleSplashDone} />
+  }
+
+  if (loading || screen === 'profile-loading') {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
         <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #7C6FF7', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
@@ -68,83 +74,49 @@ function AppRoutes() {
     )
   }
 
-  if (!user) return <LandingPage />
+  if (!user || screen === 'login') return <LoginScreen />
 
-  if (profile === undefined && !profileErr) {
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F' }}>
-        <div style={{ width: 40, height: 40, borderRadius: '50%', border: '3px solid #7C6FF7', borderTopColor: 'transparent', animation: 'spin 0.8s linear infinite' }} />
-      </div>
-    )
-  }
-
-  if (profileErr) {
-    return (
-      <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F', color: 'white', padding: '2rem', textAlign: 'center', gap: 12 }}>
-        <div style={{ fontSize: 16, color: '#E24B4A' }}>Could not reach server</div>
-        <div style={{ fontSize: 12, color: 'rgba(255,255,255,0.4)', maxWidth: 280 }}>{profileErr}</div>
-        <button onClick={() => setProfileRetry(r => r + 1)} style={{ marginTop: 8, padding: '8px 20px', background: 'rgba(124,111,247,0.15)', border: '1px solid rgba(124,111,247,0.4)', borderRadius: 8, color: '#7C6FF7', cursor: 'pointer', fontSize: 13 }}>Retry</button>
-      </div>
-    )
-  }
-
-  if (profile === null) {
+  if (screen === 'profile-setup') {
     return (
       <ProfileSetup
         onComplete={async () => {
           const p = await getProfile()
           setProfile(p)
-          setScreen('landing')
+          setScreen('calibration')
         }}
       />
     )
   }
 
-  switch (screen) {
-    case 'connection':
-      return (
-        <ConnectionRitual
-          cfg={cfg}
-          isOnboarding={profile?.calibration_done === false}
-          onReady={handleConnectionReady}
-          onBack={() => setScreen('landing')}
-        />
-      )
+  if (screen === 'calibration') {
+    return <CalibrationScreen onReady={handleCalibrationReady} />
+  }
 
+  switch (screen) {
     case 'session':
       return (
         <Session
           cfg={cfg}
           onEnd={(data) => { setInsightData(data); setScreen('insight') }}
-          onDiscard={() => { setCfg(null); setScreen('landing') }}
+          onDiscard={() => setScreen('dashboard')}
         />
       )
-
     case 'insight':
       return (
         <Insight
           data={insightData}
-          onDone={() => { setInsightData(null); setCfg(null); setScreen('landing') }}
+          onDone={() => { setInsightData(null); setScreen('dashboard') }}
         />
       )
-
-    default: // 'landing'
+    default: // 'dashboard'
       return (
         <Dashboard
-          hasCalibrated={profile?.calibration_done === true}
-          savedRfBpm={profile?.rf_bpm ?? 5.5}
+          cfg={cfg}
+          profile={profile}
           bleStatus={bleStatus}
-          onConnectH10={requestBle}
-          onStart={(c) => {
-            const rfBpm = c.skipCalibration ? (c.rfBpm ?? profile?.rf_bpm ?? 5.5) : (profile?.rf_bpm ?? 5.5)
-            const rfLocked = profile?.rf_locked ?? false
-            setCfg({ ...c, timezone: Intl.DateTimeFormat().resolvedOptions().timeZone, rfBpm, rfLocked })
-            // Skip calibration for users who already have an rf_bpm from a prior calibration
-            if (profile?.calibration_done && profile?.rf_bpm) {
-              setScreen('session')
-            } else {
-              setScreen('connection')
-            }
+          onStart={(sessionCfg) => {
+            setCfg(prev => ({ ...prev, ...sessionCfg }))
+            setScreen('session')
           }}
         />
       )
@@ -160,5 +132,3 @@ export default function App() {
     </AuthProvider>
   )
 }
-
-
