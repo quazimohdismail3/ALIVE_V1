@@ -24,6 +24,13 @@ function vsColor(vs) {
   return '#E24B4A';
 }
 
+const SESSION_TIPS = {
+  'VS Score': 'Vagal Synchrony score (0–100). Measures how well your nervous system is regulating right now. 0–30 = shutdown/anxious, 31–55 = stressed, 56–75 = regulated, 76–100 = flow state. Derived from HRV complexity, heart-breath coherence, and autonomic balance.',
+  'RF': 'Resonance Frequency breathing. Your personal RF is the breath rate that maximizes heart rate variability amplitude — found during calibration. Breathing at this rate entrains your baroreflex loop and boosts parasympathetic tone. Orange = still converging, green = locked.',
+  'RMSSD': 'Root mean square of successive RR-interval differences (ms). The primary HRV metric. Higher RMSSD = stronger vagal (parasympathetic) activity = better autonomic health. Below 20 ms: low. 20–50 ms: moderate. Above 50 ms: robust.',
+  'RF Coherence': 'How synchronized your current breathing rate is with your calibrated resonance frequency. Higher = your HRV amplitude is being maximized by the breath-heart entrainment loop. Target: above 0.6 for therapeutic benefit.',
+};
+
 async function postSessionEnd(summary) {
   try {
     await fetch(`${API_URL}/api/session/end`, {
@@ -59,6 +66,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const [lastStatus, setLastStatus] = useState(null); // {status, n_rr, t} from backend buffering / low_sqi
   const [sensorReady, setSensorReady] = useState(false);
   const [hrvPoints, setHrvPoints]   = useState([]);
+  const [activeTip, setActiveTip]   = useState(null);
 
   const wsRef       = useRef(null);
   const fusionRef   = useRef(null);
@@ -117,7 +125,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       if (cancelled) return;
 
       // B2 fix: pass cfg.session (not token+timestamp) as first arg
-      const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone, durationS: sessionDurationS });
+      const ws = new WSClient(session, backendMode ?? 2, authToken, handleWsMessage, { timezone, durationS: sessionDurationS, rfBpm: rfBpm ?? 0 });
       ws.connect();
       // Tell backend this is a session WS (not calibration), avoids 2s peek timeout
       const flushSentinel = setInterval(() => {
@@ -270,6 +278,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           {Math.round(vs)}
         </div>
         <div style={{ color: '#7A7A96', fontSize: 12, marginTop: 4 }}>VS score</div>
+        <button onClick={() => setActiveTip('VS Score')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>?</button>
       </div>
 
       {/* RF breath ring */}
@@ -362,6 +371,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
             <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>RF</span>
             <span style={{ fontWeight: 700, fontSize: 14, color: 'var(--text)' }}>{frame.rf_bpm.toFixed(1)} bpm</span>
             {frame.rf_locked && <span style={{ marginLeft: 'auto', fontSize: 10, color: '#3FBFA8' }}>locked</span>}
+            <button onClick={() => setActiveTip('RF')} style={{ marginLeft: 'auto', background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 16, height: 16, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 9, fontWeight: 700, lineHeight: 1, flexShrink: 0 }}>?</button>
           </div>
         )}
 
@@ -369,7 +379,10 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         {hrvPoints.length >= 2 && (
           <div style={{ marginTop: 16, padding: '12px 14px', background: 'rgba(255,255,255,0.03)', borderRadius: 12, border: '1px solid rgba(255,255,255,0.06)' }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
-              <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>HRV</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ fontSize: 11, color: 'var(--text-dim)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>RMSSD</span>
+                <button onClick={() => setActiveTip('RMSSD')} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.45)', fontSize: 9, fontWeight: 700, lineHeight: 1, padding: 0 }}>?</button>
+              </div>
               {frame?.metrics?.rmssd > 0 && (
                 <span style={{ fontSize: 13, fontWeight: 700, color: '#3FBFA8' }}>{Math.round(frame.metrics.rmssd)} ms</span>
               )}
@@ -409,7 +422,10 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         {frame?.rf_coherence != null && (
           <div className="v2-card fade-slide-up" style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
-              <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>RF Coherence</span>
+              <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
+                <span style={{ color: 'var(--text-dim)', fontSize: 12 }}>RF Coherence</span>
+                <button onClick={() => setActiveTip('RF Coherence')} style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.45)', fontSize: 9, fontWeight: 700, lineHeight: 1, padding: 0 }}>?</button>
+              </div>
               <span style={{ color: frame.rf_locked ? 'var(--locked)' : 'var(--warn)', fontSize: 12, fontWeight: 600 }}>
                 {frame.rf_locked ? `Locked · ${frame.rf_bpm?.toFixed(1)} bpm` : `Calibrating · ${frame.rf_bpm?.toFixed(1)} bpm`}
               </span>
@@ -425,6 +441,18 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           </div>
         )}
       </div>
+
+      {/* Tooltip popup */}
+      {activeTip && (
+        <div onClick={() => setActiveTip(null)} style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200, padding: '0 0 32px' }}>
+          <div style={{ background: '#1A1A2E', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: '20px 24px', maxWidth: 360, width: '90%' }}
+               onClick={e => e.stopPropagation()}>
+            <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', marginBottom: 8 }}>{activeTip}</div>
+            <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 1.55 }}>{SESSION_TIPS[activeTip] ?? 'No description available.'}</div>
+            <button onClick={() => setActiveTip(null)} style={{ marginTop: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 10, color: '#fff', padding: '8px 20px', fontSize: 13, cursor: 'pointer', width: '100%' }}>Got it</button>
+          </div>
+        </div>
+      )}
 
       {/* Discard sheet */}
       {showDiscard && (

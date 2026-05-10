@@ -165,6 +165,7 @@ async def ws_session(
     mode: int = Query(1),
     duration_s: float = Query(600.0),
     sim: int = Query(0),
+    cal_rf_bpm: float = Query(0.0),
 ):
     """1Hz control loop. First message must be {"type":"auth","token":"<jwt>"}.
 
@@ -265,6 +266,11 @@ async def ws_session(
     rf_locked = False
     rf_bpm = rf_optimizer.f0
     rf_coherence = 0.0
+    # If calibration already locked an RF BPM, seed the session with it immediately
+    if cal_rf_bpm > 0:
+        rf_bpm = cal_rf_bpm
+        rf_locked = True
+        est.user_calibrated_rf_hz = cal_rf_bpm / 60.0
     # current_mode is the calibration / VS-weighting mode (1=phone, 2=H10, 3=combined),
     # taken from the WS query param. Falls back to 2 (H10) if a stray value sneaks in.
     current_mode = mode if mode in MODE_CALIBRATION_CONFIG else 2
@@ -585,19 +591,21 @@ async def ws_session(
             last_state = state
 
             # --- VS score (mode-adaptive; unavailable components get weight redistributed)
-            # lf_coherence_at_rf, rsa_amplitude_norm, rmssd_velocity_norm filled Phase C/E
-            # sd2_sd1_norm derived from existing Poincaré metrics
             _hrv_d = metrics.to_dict()
             _sd2 = _hrv_d.get("sd2", 0.0) or 0.0
             _sd1 = _hrv_d.get("sd1", 1.0) or 1.0
-            _sd2_sd1_norm = min(1.0, (_sd2 / max(_sd1, 0.01)) / 3.0)  # normalize: ratio ~0–3 → 0–1
+            _sd2_sd1_norm = min(1.0, (_sd2 / max(_sd1, 0.01)) / 3.0)
+            # Approximate Phase C/E components from available metrics
+            _rmssd_n = state.rmssd_norm  # 0-1; proxy for lf_coherence (vagal tone)
+            _hf_n = (min(1.0, metrics.hf_power / 2000.0) if metrics.hf_power and metrics.hf_power > 0 else _rmssd_n)
+            _traj_n = (state.recovery_rate + 1.0) / 2.0  # -1..1 → 0..1; proxy for rmssd_trajectory
             vs_components = {
-                "lf_coherence": _hrv_d.get("lf_coherence_at_rf"),      # filled Phase C
-                "rsa_amplitude": _hrv_d.get("rsa_amplitude_norm"),      # filled Phase E
-                "rmssd_trajectory": _hrv_d.get("rmssd_velocity_norm"),  # filled Phase E
+                "lf_coherence": _hrv_d.get("lf_coherence_at_rf") or _rmssd_n,
+                "rsa_amplitude": _hrv_d.get("rsa_amplitude_norm") or _hf_n,
+                "rmssd_trajectory": _hrv_d.get("rmssd_velocity_norm") or _traj_n,
                 "dfa_alpha1": min(1.0, max(0.0, (_hrv_d.get("dfa_alpha1", 0.0) or 0.0) / 2.0)),
-                "breath_rsa_lock": None,  # filled Phase E
-                "posture_openness": None,  # filled Phase E
+                "breath_rsa_lock": None,
+                "posture_openness": None,
                 "sd2_sd1_ratio": _sd2_sd1_norm,
             }
             vs_result = compute_vs_adaptive(vs_components, mode=current_mode, confidences={})
@@ -621,30 +629,33 @@ async def ws_session(
 
             # --- Persist snapshot
             if sid and os.environ.get("DATABASE_URL"):
-                ls = latent_extractor.compute(metrics.to_dict(), {}, {}, circadian_ctx, current_mode)
-                await db.write_snapshot(
-                    session_id=sid,
-                    user_id=user_id,
-                    epoch_s=int(elapsed),
-                    metrics={
-                        "rmssd": metrics.rmssd,
-                        "sdnn": metrics.sdnn,
-                        "lf_hf": metrics.lf_hf,
-                        "dfa_a1": metrics.dfa_a1,
-                        "svi": getattr(metrics, "svi", None),
-                        "poincare_sd1": getattr(metrics, "poincare_sd1", None),
-                        "poincare_sd2": getattr(metrics, "poincare_sd2", None),
-                        "vs_score": vs_result.get("vs"),
-                        "ans_state": last_ans,
-                        "arc_phase": current_phase,
-                        "rf_coherence": rf_coherence,
-                        "rf_locked": rf_locked,
-                        "ls_arousal": ls.arousal,
-                        "ls_valence": ls.valence,
-                        "ls_regulation": ls.regulation,
-                        "ls_engagement": ls.engagement,
-                    },
-                )
+                try:
+                    ls = latent_extractor.compute(metrics.to_dict(), {}, {}, circadian_ctx, current_mode)
+                    await db.write_snapshot(
+                        session_id=sid,
+                        user_id=user_id,
+                        epoch_s=int(elapsed),
+                        metrics={
+                            "rmssd": metrics.rmssd,
+                            "sdnn": metrics.sdnn,
+                            "lf_hf": metrics.lf_hf_ratio,
+                            "dfa_a1": metrics.dfa_alpha1,
+                            "svi": getattr(metrics, "svi", None),
+                            "poincare_sd1": getattr(metrics, "sd1", None),
+                            "poincare_sd2": getattr(metrics, "sd2", None),
+                            "vs_score": vs_result.get("vs"),
+                            "ans_state": last_ans.state if last_ans else None,
+                            "arc_phase": current_phase,
+                            "rf_coherence": rf_coherence,
+                            "rf_locked": rf_locked,
+                            "ls_arousal": ls.arousal,
+                            "ls_valence": ls.valence,
+                            "ls_regulation": ls.regulation,
+                            "ls_engagement": ls.engagement,
+                        },
+                    )
+                except Exception:
+                    pass  # DB failure must not kill the session loop
 
             # --- Emit frame
             await websocket.send_json({

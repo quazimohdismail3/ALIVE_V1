@@ -33,6 +33,7 @@ export default function CalibrationScreen({ onReady }) {
   const [hrPulse, setHrPulse] = useState(false)
   const [phraseIdx, setPhraseIdx] = useState(0)
   const [errorMsg, setErrorMsg] = useState(null)
+  const [activeTooltip, setActiveTooltip] = useState(null)
 
   const wsRef = useRef(null)
   const fusionRef = useRef(null)
@@ -284,13 +285,27 @@ export default function CalibrationScreen({ onReady }) {
 
             {showHrv && (
               <div style={{ width: '100%', background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.07)', borderRadius: 14, padding: '14px 16px', display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px 14px' }}>
-                <MetricCell label="RMSSD" value={liveRmssd ? `${liveRmssd} ms` : '…'} color="#3FBFA8" />
-                <MetricCell label="Coherence" value={`${(coherence * 100).toFixed(0)}%`} color="#7C6FF7" />
-                {liveHf != null && <MetricCell label="HF Power" value={`${liveHf.toFixed(0)} ms²`} color="#3FBFA8" />}
-                {liveLf != null && <MetricCell label="LF Power" value={`${liveLf.toFixed(0)} ms²`} color="#EF9F27" />}
+                <MetricCell label="RMSSD" value={liveRmssd ? `${liveRmssd} ms` : '…'} color="#3FBFA8" onTip={setActiveTooltip} />
+                <MetricCell label="Coherence" value={`${(coherence * 100).toFixed(0)}%`} color="#7C6FF7" onTip={setActiveTooltip} />
+                <MetricCell label="RF Target" value={`${targetBpm.toFixed(1)} bpm`} color="#7C6FF7" onTip={setActiveTooltip} />
+                {liveHf != null && <MetricCell label="HF Power" value={`${liveHf.toFixed(0)} ms²`} color="#3FBFA8" onTip={setActiveTooltip} />}
+                {liveLf != null && <MetricCell label="LF Power" value={`${liveLf.toFixed(0)} ms²`} color="#EF9F27" onTip={setActiveTooltip} />}
                 {liveArtRate != null && (
-                  <MetricCell label="Artifact" value={`${(liveArtRate * 100).toFixed(1)}%`} color={artColor} note={liveArtRate > 0.15 ? 'Check strap' : liveArtRate > 0.05 ? 'Fair signal' : 'Clean'} />
+                  <MetricCell label="Artifact %" value={`${(liveArtRate * 100).toFixed(1)}%`} color={artColor} note={liveArtRate > 0.15 ? 'Check strap' : liveArtRate > 0.05 ? 'Fair signal' : 'Clean'} onTip={setActiveTooltip} />
                 )}
+              </div>
+            )}
+            {activeTooltip && (
+              <div
+                onClick={() => setActiveTooltip(null)}
+                style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.55)', display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 200, padding: '0 0 32px' }}
+              >
+                <div style={{ background: '#1A1A2E', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 18, padding: '20px 24px', maxWidth: 360, width: '90%' }}
+                     onClick={e => e.stopPropagation()}>
+                  <div style={{ fontWeight: 700, fontSize: 15, color: '#fff', marginBottom: 8 }}>{activeTooltip}</div>
+                  <div style={{ fontSize: 13, color: 'rgba(255,255,255,0.62)', lineHeight: 1.55 }}>{METRIC_TIPS[activeTooltip] ?? 'No description available.'}</div>
+                  <button onClick={() => setActiveTooltip(null)} style={{ marginTop: 16, background: 'rgba(255,255,255,0.07)', border: 'none', borderRadius: 10, color: '#fff', padding: '8px 20px', fontSize: 13, cursor: 'pointer', width: '100%' }}>Got it</button>
+                </div>
               </div>
             )}
           </>
@@ -312,10 +327,27 @@ export default function CalibrationScreen({ onReady }) {
   )
 }
 
-function MetricCell({ label, value, color, note }) {
+const METRIC_TIPS = {
+  'RMSSD': 'Root mean square of successive RR differences (ms). The primary HRV metric. Higher = stronger vagal (parasympathetic) tone. Your autonomic health baseline.',
+  'Coherence': 'How rhythmically synchronized your heart rate is with your breathing cycle. Higher = more efficient autonomic balance. Peaks at your personal resonance frequency.',
+  'RF Target': 'Resonance Frequency — the breathing rate (breaths/min) being tested right now. The app sweeps several frequencies to find the one that maximizes your HRV. Unique to your body.',
+  'HF Power': 'High-frequency HRV power (0.15–0.4 Hz, ms²). Directly reflects parasympathetic nervous system activity. Higher = more vagal brake available.',
+  'LF Power': 'Low-frequency HRV power (0.04–0.15 Hz, ms²). Reflects both sympathetic and parasympathetic tone, plus baroreceptor activity. Used to compute LF/HF balance.',
+  'Artifact %': 'Fraction of heartbeat intervals flagged as noise (ectopic beats or motion artifact). Below 5% = clean signal. Above 15% = adjust strap fit or wet the electrodes.',
+}
+
+function MetricCell({ label, value, color, note, onTip }) {
   return (
     <div>
-      <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 3 }}>{label}</div>
+      <div style={{ display: 'flex', alignItems: 'center', gap: 4, marginBottom: 3 }}>
+        <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.38)', textTransform: 'uppercase', letterSpacing: '0.06em' }}>{label}</div>
+        {onTip && METRIC_TIPS[label] && (
+          <button
+            onClick={() => onTip(label)}
+            style={{ background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 14, height: 14, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.45)', fontSize: 9, fontWeight: 700, lineHeight: 1, padding: 0, flexShrink: 0 }}
+          >?</button>
+        )}
+      </div>
       <div style={{ fontSize: 17, fontWeight: 700, color, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>{value}</div>
       {note && <div style={{ fontSize: 10, color: 'rgba(255,255,255,0.30)', marginTop: 2 }}>{note}</div>}
     </div>

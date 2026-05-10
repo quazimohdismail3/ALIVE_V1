@@ -3,7 +3,7 @@ const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
 
 export class WSClient {
-  constructor(session, mode, authToken, onMessage, { timezone, noReconnect, durationS } = {}) {
+  constructor(session, mode, authToken, onMessage, { timezone, noReconnect, durationS, rfBpm } = {}) {
     this.session = session
     this.mode = mode
     this.authToken = authToken
@@ -11,6 +11,7 @@ export class WSClient {
     this.timezone = timezone || 'UTC'
     this.noReconnect = !!noReconnect
     this.durationS = durationS ?? null
+    this.rfBpm = rfBpm ?? 0
     this.ws = null
     this._reconnectDelay = 1000
     this._closed = false
@@ -19,7 +20,8 @@ export class WSClient {
   connect() {
     if (this._closed) return
     const durParam = this.durationS && this.durationS > 0 ? `&duration_s=${this.durationS}` : ''
-    const url = `${WS_URL}/ws/session?session=${this.session}&mode=${this.mode}${durParam}`
+    const rfParam = this.rfBpm > 0 ? `&cal_rf_bpm=${this.rfBpm.toFixed(2)}` : ''
+    const url = `${WS_URL}/ws/session?session=${this.session}&mode=${this.mode}${durParam}${rfParam}`
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
