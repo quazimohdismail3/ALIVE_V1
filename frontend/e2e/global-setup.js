@@ -16,13 +16,15 @@ export default async function globalSetup() {
   const page = await browser.newPage();
 
   await page.goto(BASE_URL);
-  // Landing page shows first — click "Sign in" to reveal login form
-  await page.getByText('Sign in').click();
+  // SplashScreen shows for ~1.5s then routes to LoginScreen
+  await page.waitForSelector('input[placeholder="Email"]', { timeout: 10000 })
+    .catch(() => { throw new Error('[global-setup] LoginScreen did not appear after splash') });
+
   await page.getByPlaceholder('Email').fill(email);
   await page.getByPlaceholder('Password').fill(password);
   await page.locator('button[type="submit"]').click();
 
-  // SPA never changes URL — wait for Email input to disappear (auth complete)
+  // Wait for Email input to disappear (auth complete → CalibrationScreen or Dashboard)
   await page.waitForSelector('input[placeholder="Email"]', { state: 'hidden', timeout: 15000 })
     .catch(() => {
       throw new Error('[global-setup] Login did not complete — check TEST_USER_EMAIL/TEST_USER_PASSWORD');
