@@ -253,12 +253,28 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   }
 
   const vs      = frame?.vs?.vs ?? 0;
-  const color   = vsColor(vs);
-  const rfPer   = frame?.rf_bpm ? 60 / frame.rf_bpm : 10;
-
   const rfHz           = frame?.rf_hz ?? null;
   const rfCalibratedHz = frame?.rf_calibrated_hz ?? 0.1;
   const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.008;
+
+  // ANS color for inline styles (mirrors --ambient CSS variable)
+  const ANS_COLORS = {
+    ventral_vagal: '#00D084',
+    healthy_sympathetic: '#EF9F27',
+    anxious_sympathetic: '#E24B4A',
+    dorsal_vagal: '#534AB7',
+    burnout_rigidity: '#7A7A96',
+  };
+  const ansColor = ANS_COLORS[frame?.ans?.state] ?? '#7C6FF7';
+
+  const ANS_LABELS = {
+    ventral_vagal: 'Ventral',
+    healthy_sympathetic: 'Healthy',
+    anxious_sympathetic: 'Anxious',
+    dorsal_vagal: 'Dorsal',
+    burnout_rigidity: 'Burnout',
+  };
+  const ansLabel = ANS_LABELS[frame?.ans?.state] ?? 'Calibrating';
 
   // Fire one-shot flash when breathing locks to RF resonance
   useEffect(() => {
@@ -269,47 +285,15 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   }, [inResonance]);
 
   return (
-    <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden' }}>
+    <div className={inResonance ? 'in-resonance' : undefined} style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
       <div className="ambient-bg" />
 
-      {/* Living VS orb — pulses at VS-driven period */}
-      <div className={inResonance ? 'in-resonance' : ''} style={{
-        position: 'absolute', top: '18%', left: '50%', transform: 'translateX(-50%)',
-        width: 200, height: 200, borderRadius: '50%',
-        background: `radial-gradient(circle, ${color}33 0%, transparent 70%)`,
-        border: `2px solid ${color}44`,
-        boxShadow: `0 0 40px ${color}22`,
-        animation: `vsPulse var(--vs-period, 2s) ease-in-out infinite`,
-        transition: 'box-shadow 1200ms ease, border-color 1200ms ease',
-        display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
-      }}>
-        <div style={{ fontFamily: 'var(--font-head)', fontWeight: 700, fontSize: 48, color, fontVariantNumeric: 'tabular-nums', lineHeight: 1 }}>
-          {Math.round(vs)}
-        </div>
-        <div style={{ color: '#7A7A96', fontSize: 12, marginTop: 4 }}>VS score</div>
-        <button onClick={() => setActiveTip('VS Score')} style={{ position: 'absolute', top: 8, right: 8, background: 'rgba(255,255,255,0.08)', border: 'none', borderRadius: '50%', width: 18, height: 18, display: 'flex', alignItems: 'center', justifyContent: 'center', cursor: 'pointer', color: 'rgba(255,255,255,0.5)', fontSize: 10, fontWeight: 700, lineHeight: 1 }}>?</button>
-      </div>
-
-      {/* RF breath ring */}
-      <div style={{
-        position: 'absolute', top: 'calc(18% - 20px)', left: '50%', transform: 'translateX(-50%)',
-        width: 240, height: 240, borderRadius: '50%',
-        border: `1.5px solid ${frame?.rf_locked ? 'var(--locked)' : 'rgba(255,255,255,0.08)'}`,
-        animation: `breatheRing var(--rf-calibrated-period, 10s) ease-in-out infinite`,
-        pointerEvents: 'none',
-        transition: 'border-color 1000ms ease',
-      }} />
-
-      {/* Measured RF inner ring — tracks actual breathing rate */}
-      {rfHz && (
+      {/* Resonance flash — one-shot on lock */}
+      {justLocked && (
         <div style={{
-          position: 'absolute', top: 'calc(18% - 10px)', left: '50%', transform: 'translateX(-50%)',
-          width: 220, height: 220, borderRadius: '50%',
-          border: `1px solid ${inResonance ? 'rgba(124,111,247,0.5)' : 'rgba(255,255,255,0.05)'}`,
-          animation: `breatheRing var(--rf-measured-period, 10s) ease-in-out infinite`,
-          pointerEvents: 'none',
-          transition: 'border-color 800ms ease',
-          boxShadow: inResonance ? '0 0 20px rgba(124,111,247,0.3)' : 'none',
+          position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1,
+          background: `radial-gradient(circle at 50% 50%, ${ansColor}40, transparent 60%)`,
+          animation: 'resonanceFlash 1000ms ease-out forwards',
         }} />
       )}
 
@@ -342,10 +326,82 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         </div>
       </div>
 
+      {/* Two-orb stack — target RF + live breathing */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', gap: 20, position: 'relative', zIndex: 2 }}>
+        {/* Target orb — calibrated RF pace */}
+        <div style={{
+          width: 130, height: 130, borderRadius: '50%',
+          background: `radial-gradient(circle, ${ansColor}22 0%, transparent 70%)`,
+          border: `2px solid ${ansColor}55`,
+          boxShadow: `0 0 40px ${ansColor}22`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          animation: 'orbPulse var(--rf-calibrated-period, 10s) ease-in-out infinite',
+        }}>
+          <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: `${ansColor}88`, marginBottom: 2 }}>target</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: `${ansColor}bb`, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {(rfCalibratedHz * 60).toFixed(1)}
+          </div>
+          <div style={{ fontSize: 8, color: `${ansColor}66` }}>br / min</div>
+        </div>
+
+        {/* Gap indicator / resonance label */}
+        <div style={{
+          fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
+          color: inResonance ? `${ansColor}cc` : 'rgba(255,255,255,0.2)',
+          transition: 'color 800ms ease',
+          minHeight: 14,
+        }}>
+          {inResonance
+            ? 'RESONANCE'
+            : rfHz ? `↓ ${Math.abs((rfHz - rfCalibratedHz) * 60).toFixed(1)} off` : ''}
+        </div>
+
+        {/* Live orb — measured breathing rate */}
+        <div style={{
+          width: 130, height: 130, borderRadius: '50%',
+          background: `radial-gradient(circle, ${ansColor}44 0%, transparent 70%)`,
+          border: `2px solid ${ansColor}${inResonance ? 'cc' : '88'}`,
+          boxShadow: `0 0 ${inResonance ? 80 : 55}px ${ansColor}${inResonance ? '55' : '33'}`,
+          display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          animation: 'orbPulse var(--rf-measured-period, 10s) ease-in-out infinite',
+          transition: 'box-shadow 1200ms ease, border-color 1200ms ease',
+        }}>
+          <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: `${ansColor}bb`, marginBottom: 2 }}>breathing</div>
+          <div style={{ fontSize: 28, fontWeight: 800, color: `${ansColor}ee`, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
+            {rfHz ? (rfHz * 60).toFixed(1) : '—'}
+          </div>
+          <div style={{ fontSize: 8, color: `${ansColor}88` }}>br / min</div>
+        </div>
+      </div>
+
+      {/* Bottom strip — HR | ANS badge | VS */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '12px 28px 20px', position: 'relative', zIndex: 2,
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.7)', fontVariantNumeric: 'tabular-nums' }}>
+            {frame?.metrics?.hr ? Math.round(frame.metrics.hr) : '—'}
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>HR bpm</div>
+        </div>
+        <div style={{
+          fontSize: 9, color: `${ansColor}dd`, border: `1px solid ${ansColor}44`,
+          borderRadius: 20, padding: '4px 14px', textTransform: 'uppercase', letterSpacing: '0.1em',
+          transition: 'color 1200ms ease, border-color 1200ms ease',
+        }}>
+          {ansLabel}
+        </div>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ fontSize: 18, fontWeight: 700, color: 'rgba(255,255,255,0.7)', fontVariantNumeric: 'tabular-nums' }}>
+            {frame?.metrics?.rmssd ? Math.round(frame.metrics.rmssd) : '—'}
+          </div>
+          <div style={{ fontSize: 8, color: 'rgba(255,255,255,0.25)', textTransform: 'uppercase', letterSpacing: '0.08em', marginTop: 2 }}>RMSSD ms</div>
+        </div>
+      </div>
+
       {/* Content panels */}
       <div style={{ position: 'relative', zIndex: 2, padding: '0 20px', maxWidth: 480, margin: '0 auto' }}>
-        {/* Spacer for orb */}
-        <div style={{ height: 280 }} />
 
         {/* ANS state */}
         <div className="v2-card fade-slide-up" style={{ marginBottom: 12 }}>
