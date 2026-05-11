@@ -96,6 +96,28 @@ export class OrganicVariation {
     this._panner   = null;
   }
 
+  // Called from session_audio when spatial_width param updates (0–1)
+  setSpatialWidth(width) {
+    if (!this._pannerLFO) return;
+    const maxPan = 0.3 + Math.max(0, Math.min(1, width)) * 0.5; // 0.3–0.8
+    try {
+      this._pannerLFO.min = -maxPan;
+      this._pannerLFO.max =  maxPan;
+    } catch (_) {}
+  }
+
+  // Called from session_audio when micro_variation param updates (0–1)
+  setVariationIntensity(intensity) {
+    Object.values(this._lfos).forEach(lfo => {
+      if (!lfo) return;
+      const depth = Math.max(0, Math.min(1, intensity));
+      try {
+        lfo.min = -(depth * 2.0); // max ±2 dB
+        lfo.max =  (depth * 2.0);
+      } catch (_) {}
+    });
+  }
+
   // ── Private ──────────────────────────────────────────────────────────────────
 
   _applyLFOs() {

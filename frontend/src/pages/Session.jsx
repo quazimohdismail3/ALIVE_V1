@@ -209,7 +209,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       // Wire audio updates every frame
       if (audioRef.current?._started) {
         if (msg.rf_bpm) audioRef.current.updateRF(msg.rf_bpm);
-        if (msg.music_params) audioRef.current.updateMusicParams(msg.music_params);
+        if (msg.music_params) audioRef.current.updateMusicParams(msg.music_params, msg.affect);
         if (msg.session_phase && msg.ans?.state) {
           audioRef.current.updateState(msg.session_phase, msg.ans.state, false);
         }
