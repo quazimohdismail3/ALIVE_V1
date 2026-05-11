@@ -67,6 +67,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const [sensorReady, setSensorReady] = useState(false);
   const [hrvPoints, setHrvPoints]   = useState([]);
   const [activeTip, setActiveTip]   = useState(null);
+  const [justLocked, setJustLocked] = useState(false);
 
   const wsRef       = useRef(null);
   const fusionRef   = useRef(null);
@@ -258,6 +259,14 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const rfHz           = frame?.rf_hz ?? null;
   const rfCalibratedHz = frame?.rf_calibrated_hz ?? 0.1;
   const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.008;
+
+  // Fire one-shot flash when breathing locks to RF resonance
+  useEffect(() => {
+    if (!inResonance) return;
+    setJustLocked(true);
+    const t = setTimeout(() => setJustLocked(false), 1000);
+    return () => clearTimeout(t);
+  }, [inResonance]);
 
   return (
     <div style={{ minHeight: '100dvh', background: 'var(--bg)', color: 'var(--text)', position: 'relative', overflow: 'hidden' }}>
