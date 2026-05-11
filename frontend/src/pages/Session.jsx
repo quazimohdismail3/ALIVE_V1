@@ -16,13 +16,7 @@ import { SensorFusion } from '../sensors/sensor_fusion.js';
 import { useSensorContext } from '../context/SensorContext.jsx';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
-// VS score → color band (matches backend vs_score.py)
-function vsColor(vs) {
-  if (vs >= 76) return '#534AB7';
-  if (vs >= 56) return '#1D9E75';
-  if (vs >= 31) return '#EF9F27';
-  return '#E24B4A';
-}
+// (vsColor removed — VS orb no longer rendered)
 
 const SESSION_TIPS = {
   'VS Score': 'Vagal Synchrony score (0–100). Measures how well your nervous system is regulating right now. 0–30 = shutdown/anxious, 31–55 = stressed, 56–75 = regulated, 76–100 = flow state. Derived from HRV complexity, heart-breath coherence, and autonomic balance.',
@@ -50,6 +44,22 @@ async function postSessionEnd(summary) {
     });
   } catch (_) {}
 }
+
+const ANS_COLORS = {
+  ventral_vagal: '#00D084',
+  healthy_sympathetic: '#EF9F27',
+  anxious_sympathetic: '#E24B4A',
+  dorsal_vagal: '#534AB7',
+  burnout_rigidity: '#7A7A96',
+};
+
+const ANS_LABELS = {
+  ventral_vagal: 'Ventral',
+  healthy_sympathetic: 'Healthy',
+  anxious_sympathetic: 'Anxious',
+  dorsal_vagal: 'Dorsal',
+  burnout_rigidity: 'Burnout',
+};
 
 export default function Session({ cfg, onEnd, onDiscard }) {
   const { session, sensorMode, backendMode, timezone, rfBpm, durationS } = cfg ?? {};
@@ -252,28 +262,12 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     onEnd(summary);
   }
 
-  const vs      = frame?.vs?.vs ?? 0;
   const rfHz           = frame?.rf_hz ?? null;
   const rfCalibratedHz = frame?.rf_calibrated_hz ?? 0.1;
   const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.008;
 
   // ANS color for inline styles (mirrors --ambient CSS variable)
-  const ANS_COLORS = {
-    ventral_vagal: '#00D084',
-    healthy_sympathetic: '#EF9F27',
-    anxious_sympathetic: '#E24B4A',
-    dorsal_vagal: '#534AB7',
-    burnout_rigidity: '#7A7A96',
-  };
   const ansColor = ANS_COLORS[frame?.ans?.state] ?? '#7C6FF7';
-
-  const ANS_LABELS = {
-    ventral_vagal: 'Ventral',
-    healthy_sympathetic: 'Healthy',
-    anxious_sympathetic: 'Anxious',
-    dorsal_vagal: 'Dorsal',
-    burnout_rigidity: 'Burnout',
-  };
   const ansLabel = ANS_LABELS[frame?.ans?.state] ?? 'Calibrating';
 
   // Fire one-shot flash when breathing locks to RF resonance
@@ -339,7 +333,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         }}>
           <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: `${ansColor}88`, marginBottom: 2 }}>target</div>
           <div style={{ fontSize: 28, fontWeight: 800, color: `${ansColor}bb`, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
-            {(rfCalibratedHz * 60).toFixed(1)}
+            {frame?.rf_calibrated_hz ? (rfCalibratedHz * 60).toFixed(1) : '—'}
           </div>
           <div style={{ fontSize: 8, color: `${ansColor}66` }}>br / min</div>
         </div>
@@ -374,7 +368,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         </div>
       </div>
 
-      {/* Bottom strip — HR | ANS badge | VS */}
+      {/* Bottom strip — HR | ANS badge | RMSSD */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         padding: '12px 28px 20px', position: 'relative', zIndex: 2,
