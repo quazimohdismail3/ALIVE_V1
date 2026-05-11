@@ -1,0 +1,1208 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Essentia.js Deep Dive — Mission Alive Integration Guide</title>
+<style>
+:root {
+  --bg: #050a14;
+  --bg2: #0a1628;
+  --bg3: #0f1f3d;
+  --bg4: #071220;
+  --accent: #00e5ff;
+  --accent2: #7b61ff;
+  --accent3: #00ff88;
+  --warn: #ff6b35;
+  --text: #e8f4fd;
+  --text2: #8baec9;
+  --border: rgba(0,229,255,0.15);
+  --code-bg: #020810;
+  --keyword: #ff79c6;
+  --string: #f1fa8c;
+  --comment: #6272a4;
+  --function: #50fa7b;
+  --var: #8be9fd;
+  --number: #bd93f9;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { scroll-behavior: smooth; }
+body {
+  background: var(--bg);
+  color: var(--text);
+  font-family: 'Inter', system-ui, sans-serif;
+  line-height: 1.65;
+  font-size: 15px;
+}
+
+/* SCROLL PROGRESS */
+.scroll-bar {
+  position: fixed; top: 0; left: 0; height: 3px;
+  background: linear-gradient(90deg, var(--accent), var(--accent2), var(--accent3));
+  z-index: 999; width: 0%;
+}
+
+/* NAV */
+nav {
+  position: fixed; top: 3px; left: 0; right: 0; z-index: 100;
+  background: rgba(5,10,20,0.97);
+  backdrop-filter: blur(16px);
+  border-bottom: 1px solid var(--border);
+  display: flex; align-items: center;
+  padding: 0 2rem; height: 52px; gap: 0;
+}
+.nav-logo {
+  font-size: 0.9rem; font-weight: 800;
+  color: var(--accent); letter-spacing: 1px;
+  white-space: nowrap; margin-right: 2rem;
+}
+.nav-links { display: flex; gap: 0; overflow-x: auto; }
+.nav-links a {
+  font-size: 0.75rem; color: var(--text2);
+  text-decoration: none; padding: 0.4rem 0.75rem;
+  border-radius: 4px; white-space: nowrap;
+  transition: all 0.2s;
+}
+.nav-links a:hover { color: var(--text); background: rgba(0,229,255,0.07); }
+
+/* LAYOUT */
+.page { max-width: 1100px; margin: 0 auto; padding: 0 2rem; }
+section { padding: 4.5rem 0 2.5rem; }
+section:first-of-type { padding-top: 5.5rem; }
+
+/* TYPOGRAPHY */
+h1 { font-size: clamp(2rem, 4vw, 3rem); font-weight: 800; line-height: 1.1; }
+h2 { font-size: 1.6rem; font-weight: 700; margin-bottom: 1.25rem; }
+h3 { font-size: 1.15rem; font-weight: 600; margin-bottom: 0.75rem; color: var(--text); }
+h4 { font-size: 0.95rem; font-weight: 600; color: var(--accent); margin-bottom: 0.5rem; }
+p { color: var(--text2); margin-bottom: 0.85rem; max-width: 720px; }
+.section-label {
+  font-size: 0.72rem; font-weight: 700; letter-spacing: 0.15em;
+  text-transform: uppercase; color: var(--accent); margin-bottom: 0.6rem;
+}
+.divider { height: 1px; background: var(--border); margin: 3rem 0; }
+
+/* HERO */
+.hero {
+  min-height: 85vh; display: flex; flex-direction: column;
+  justify-content: center; position: relative; overflow: hidden;
+}
+.hero::before {
+  content: '';
+  position: absolute; inset: 0;
+  background: radial-gradient(ellipse 70% 60% at 30% 40%, rgba(0,229,255,0.05) 0%, transparent 60%),
+              radial-gradient(ellipse 50% 40% at 70% 70%, rgba(123,97,255,0.07) 0%, transparent 60%);
+}
+.hero-content { position: relative; z-index: 1; }
+.hero-badge {
+  display: inline-flex; align-items: center; gap: 0.5rem;
+  background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.25);
+  border-radius: 2rem; padding: 0.35rem 0.9rem;
+  font-size: 0.75rem; color: var(--accent); font-weight: 600;
+  margin-bottom: 1.5rem;
+}
+.hero-badge .dot { width: 6px; height: 6px; background: var(--accent3); border-radius: 50%; animation: blink 2s infinite; }
+@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.2} }
+.hero h1 span { color: var(--accent); }
+.hero-sub { font-size: 1.1rem; margin-top: 1.25rem; line-height: 1.7; }
+.hero-stats { display: flex; flex-wrap: wrap; gap: 2rem; margin-top: 2.5rem; }
+.stat { display: flex; flex-direction: column; }
+.stat .val { font-size: 1.75rem; font-weight: 800; color: var(--accent); font-variant-numeric: tabular-nums; }
+.stat .lbl { font-size: 0.72rem; color: var(--text2); }
+
+/* CODE BLOCKS */
+pre {
+  background: var(--code-bg);
+  border: 1px solid rgba(0,229,255,0.12);
+  border-radius: 10px;
+  padding: 1.25rem 1.5rem;
+  overflow-x: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Consolas', monospace;
+  font-size: 0.82rem;
+  line-height: 1.7;
+  margin: 1rem 0 1.5rem;
+  position: relative;
+}
+pre .lang-tag {
+  position: absolute; top: 0.6rem; right: 0.75rem;
+  font-size: 0.65rem; color: var(--text2);
+  background: rgba(0,229,255,0.08); border-radius: 3px;
+  padding: 0.1rem 0.4rem; text-transform: uppercase;
+}
+.kw { color: var(--keyword); }
+.str { color: var(--string); }
+.cmt { color: var(--comment); font-style: italic; }
+.fn { color: var(--function); }
+.vr { color: var(--var); }
+.nm { color: var(--number); }
+code {
+  background: rgba(0,229,255,0.08); border: 1px solid rgba(0,229,255,0.15);
+  border-radius: 4px; padding: 0.1rem 0.4rem;
+  font-family: 'JetBrains Mono', monospace; font-size: 0.82em;
+  color: var(--accent);
+}
+
+/* CARDS */
+.card {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.5rem;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.card:hover { border-color: rgba(0,229,255,0.3); }
+.grid-2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 1.25rem; }
+.grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 1.25rem; }
+
+/* ALGO TABLE */
+.algo-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.algo-table th {
+  text-align: left; padding: 0.65rem 1rem;
+  background: var(--bg3); color: var(--accent);
+  font-weight: 600; font-size: 0.72rem; letter-spacing: 0.08em;
+  text-transform: uppercase; border-bottom: 1px solid var(--border);
+  white-space: nowrap;
+}
+.algo-table td { padding: 0.6rem 1rem; border-bottom: 1px solid rgba(0,229,255,0.06); vertical-align: top; }
+.algo-table tr:hover td { background: rgba(0,229,255,0.03); }
+.algo-name { color: var(--accent3); font-weight: 600; font-family: monospace; font-size: 0.78rem; }
+.algo-out { color: var(--accent2); font-size: 0.75rem; }
+.algo-use { color: var(--text2); font-size: 0.78rem; }
+.algo-map { background: rgba(0,255,136,0.08); border: 1px solid rgba(0,255,136,0.2); border-radius: 3px; padding: 0.1rem 0.4rem; font-size: 0.7rem; color: var(--accent3); }
+.table-wrap { overflow-x: auto; border-radius: 10px; border: 1px solid var(--border); margin: 1rem 0; }
+
+/* PIPELINE DIAGRAM */
+.pipeline {
+  background: var(--bg2); border: 1px solid var(--border);
+  border-radius: 12px; padding: 1.75rem 2rem; margin: 1.5rem 0;
+}
+.pipe-row { display: flex; align-items: center; flex-wrap: wrap; gap: 0.3rem; margin: 0.5rem 0; }
+.pipe-node {
+  background: var(--bg3); border: 1px solid var(--border);
+  border-radius: 8px; padding: 0.5rem 1rem;
+  font-size: 0.78rem; white-space: nowrap;
+}
+.pipe-node.accent { border-color: rgba(0,229,255,0.4); }
+.pipe-node.purple { border-color: rgba(123,97,255,0.4); color: var(--accent2); }
+.pipe-node.green { border-color: rgba(0,255,136,0.4); color: var(--accent3); }
+.pipe-node.warn { border-color: rgba(255,107,53,0.4); color: var(--warn); }
+.pipe-arrow { color: var(--text2); font-size: 1.1rem; padding: 0 0.3rem; }
+
+/* TABS */
+.tabs { display: flex; gap: 0.4rem; margin-bottom: 1.25rem; flex-wrap: wrap; border-bottom: 1px solid var(--border); padding-bottom: 0.75rem; }
+.tab-btn {
+  background: transparent; border: 1px solid transparent;
+  border-radius: 6px; padding: 0.4rem 1rem;
+  font-size: 0.78rem; color: var(--text2); cursor: pointer;
+  transition: all 0.2s;
+}
+.tab-btn.active { background: rgba(0,229,255,0.1); border-color: rgba(0,229,255,0.3); color: var(--accent); font-weight: 600; }
+.tab-btn:hover:not(.active) { color: var(--text); border-color: var(--border); }
+.tab-pane { display: none; }
+.tab-pane.active { display: block; }
+
+/* CALLOUT */
+.callout {
+  border-radius: 10px; padding: 1.25rem 1.5rem; margin: 1.25rem 0;
+  display: flex; gap: 1rem;
+}
+.callout.info { background: rgba(0,229,255,0.06); border: 1px solid rgba(0,229,255,0.2); }
+.callout.warn { background: rgba(255,107,53,0.07); border: 1px solid rgba(255,107,53,0.3); }
+.callout.tip { background: rgba(0,255,136,0.06); border: 1px solid rgba(0,255,136,0.2); }
+.callout.purple { background: rgba(123,97,255,0.07); border: 1px solid rgba(123,97,255,0.25); }
+.callout-icon { font-size: 1.2rem; flex-shrink: 0; }
+.callout-body h4 { margin-bottom: 0.35rem; }
+.callout.info .callout-body h4 { color: var(--accent); }
+.callout.warn .callout-body h4 { color: var(--warn); }
+.callout.tip .callout-body h4 { color: var(--accent3); }
+.callout.purple .callout-body h4 { color: var(--accent2); }
+.callout-body p { font-size: 0.85rem; margin: 0; }
+
+/* MODEL CARDS */
+.model-card {
+  background: var(--bg2); border: 1px solid var(--border); border-radius: 10px;
+  padding: 1.25rem;
+}
+.model-name { font-family: monospace; font-size: 0.85rem; color: var(--accent3); font-weight: 700; margin-bottom: 0.25rem; }
+.model-task { font-size: 0.75rem; color: var(--accent2); margin-bottom: 0.5rem; }
+.model-desc { font-size: 0.8rem; color: var(--text2); }
+.model-badge {
+  display: inline-block; background: rgba(123,97,255,0.1);
+  border: 1px solid rgba(123,97,255,0.25); border-radius: 3px;
+  padding: 0.1rem 0.4rem; font-size: 0.68rem; color: var(--accent2);
+  margin-top: 0.5rem; margin-right: 0.3rem;
+}
+.model-badge.key { background: rgba(0,255,136,0.08); border-color: rgba(0,255,136,0.2); color: var(--accent3); }
+.model-badge.warn { background: rgba(255,107,53,0.08); border-color: rgba(255,107,53,0.2); color: var(--warn); }
+
+/* MAPPING TABLE */
+.map-table { width: 100%; border-collapse: collapse; font-size: 0.82rem; }
+.map-table th {
+  text-align: left; padding: 0.65rem 1rem;
+  background: var(--bg3); color: var(--accent);
+  font-size: 0.72rem; font-weight: 600; letter-spacing: 0.08em;
+  text-transform: uppercase; border-bottom: 1px solid var(--border);
+}
+.map-table td { padding: 0.6rem 1rem; border-bottom: 1px solid rgba(0,229,255,0.06); }
+.map-table tr:hover td { background: rgba(0,229,255,0.03); }
+.map-ma { color: var(--accent); font-family: monospace; font-size: 0.8rem; font-weight: 600; }
+.map-es { color: var(--accent3); font-family: monospace; font-size: 0.8rem; font-weight: 600; }
+
+/* STEP COUNTER */
+.steps { counter-reset: step; }
+.step {
+  counter-increment: step;
+  display: flex; gap: 1.25rem; padding: 1.5rem 0;
+  border-bottom: 1px solid rgba(0,229,255,0.07);
+}
+.step:last-child { border-bottom: none; }
+.step-num {
+  width: 36px; height: 36px; min-width: 36px;
+  background: rgba(0,229,255,0.1); border: 1px solid rgba(0,229,255,0.3);
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 0.85rem; font-weight: 800; color: var(--accent);
+}
+.step-num::before { content: counter(step); }
+.step-content h3 { margin-bottom: 0.4rem; font-size: 1rem; }
+.step-content p { font-size: 0.85rem; margin-bottom: 0.5rem; }
+
+/* FOOTER */
+footer {
+  border-top: 1px solid var(--border); padding: 2rem;
+  text-align: center; color: var(--text2); font-size: 0.78rem;
+}
+footer a { color: var(--accent); }
+</style>
+</head>
+<body>
+
+<div class="scroll-bar" id="scrollBar"></div>
+
+<nav>
+  <span class="nav-logo">ESSENTIA.JS ✕ MISSION ALIVE</span>
+  <div class="nav-links">
+    <a href="#what">What Is It</a>
+    <a href="#architecture">Architecture</a>
+    <a href="#algorithms">All Algorithms</a>
+    <a href="#models">ML Models</a>
+    <a href="#realtime">Real-Time</a>
+    <a href="#offline">Offline</a>
+    <a href="#mapping">MA Mapping</a>
+    <a href="#integration">Integration</a>
+    <a href="#code">Full Code</a>
+    <a href="#gotchas">Gotchas</a>
+  </div>
+</nav>
+
+<div class="page">
+
+<!-- HERO -->
+<section class="hero" id="top">
+  <div class="hero-content">
+    <div class="hero-badge"><span class="dot"></span> Deep Dive — Developer Reference — May 2026</div>
+    <h1><span>Essentia.js</span><br>Everything You Need<br>to Know</h1>
+    <p class="hero-sub" style="color:var(--text2)">
+      Open-source WASM audio analysis library from UPF Barcelona.<br>
+      Your complete technical reference for using it in Mission Alive<br>
+      to replace Spotify's deprecated audio features API.
+    </p>
+    <div class="hero-stats">
+      <div class="stat"><span class="val">100+</span><span class="lbl">Algorithms</span></div>
+      <div class="stat"><span class="val">15+</span><span class="lbl">Pre-trained ML Models</span></div>
+      <div class="stat"><span class="val">0ms</span><span class="lbl">Network Latency (runs in browser)</span></div>
+      <div class="stat"><span class="val">AGPLv3</span><span class="lbl">License</span></div>
+      <div class="stat"><span class="val">16kHz</span><span class="lbl">Target Sample Rate for ML</span></div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- WHAT IS IT -->
+<section id="what">
+  <p class="section-label">01 — Foundation</p>
+  <h2>What Essentia.js Is (And Isn't)</h2>
+
+  <div class="grid-2">
+    <div class="card">
+      <h4>What it IS</h4>
+      <ul style="color:var(--text2);font-size:0.85rem;padding-left:1rem;line-height:2">
+        <li>C++ Essentia library compiled to WebAssembly via Emscripten</li>
+        <li>Runs 100% in-browser — no server, no API calls, no latency</li>
+        <li>100+ music analysis algorithms (tempo, key, pitch, chroma, timbre...)</li>
+        <li>TensorFlow.js bridge for pre-trained deep learning models</li>
+        <li>AudioWorklet integration for real-time stream analysis</li>
+        <li>Web Worker support for non-blocking offline analysis</li>
+        <li>TypeScript typings included</li>
+        <li>npm package + CDN available</li>
+      </ul>
+    </div>
+    <div class="card">
+      <h4>What it ISN'T</h4>
+      <ul style="color:var(--text2);font-size:0.85rem;padding-left:1rem;line-height:2">
+        <li>NOT a music player — it analyzes audio, doesn't play it</li>
+        <li>NOT a metadata service — doesn't know artist/title/lyrics</li>
+        <li>NOT stable API yet — backwards compatibility not guaranteed</li>
+        <li>NOT instant for long files — WASM has startup overhead</li>
+        <li>NOT perfect for real-time BPM on live streams (needs 10–30s buffer)</li>
+        <li>NOT a Spotify replacement for catalog/playback</li>
+        <li>AGPLv3 — copyleft license, SaaS implications</li>
+      </ul>
+    </div>
+  </div>
+
+  <div class="callout info" style="margin-top:1.5rem">
+    <span class="callout-icon">🔑</span>
+    <div class="callout-body">
+      <h4>Why This Matters for Mission Alive</h4>
+      <p>Spotify deprecated audio-features + recommendations API in Nov 2024 for new apps. Essentia.js can extract the exact same features (BPM, key, mode, energy proxy, valence proxy, danceability) from any audio buffer in the browser — no Spotify API needed. This is your Spotify audio-features replacement.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ARCHITECTURE -->
+<section id="architecture">
+  <p class="section-label">02 — Architecture</p>
+  <h2>How Essentia.js Works Internally</h2>
+
+  <div class="pipeline">
+    <p style="font-size:0.78rem;color:var(--text2);margin-bottom:1rem">Two execution modes — choose based on use case</p>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:1.5rem">
+      <div>
+        <p style="font-size:0.75rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem">Mode A — Offline Analysis (Web Worker)</p>
+        <div class="pipe-row"><div class="pipe-node accent">Audio File / URL</div><span class="pipe-arrow">→</span><div class="pipe-node">Decode to Float32Array</div></div>
+        <div class="pipe-row"><div class="pipe-node">Web Worker</div><span class="pipe-arrow">→</span><div class="pipe-node purple">Essentia WASM</div></div>
+        <div class="pipe-row"><div class="pipe-node purple">100+ Algorithms</div><span class="pipe-arrow">→</span><div class="pipe-node green">Feature Object</div></div>
+        <div class="pipe-row"><div class="pipe-node green">postMessage back</div><span class="pipe-arrow">→</span><div class="pipe-node">Main Thread</div></div>
+        <p style="font-size:0.75rem;color:var(--text2);margin-top:0.75rem">Use for: analyzing a Spotify track before queuing it. Full feature set available. No UI blocking.</p>
+      </div>
+      <div>
+        <p style="font-size:0.75rem;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:0.1em;margin-bottom:0.75rem">Mode B — Real-Time (AudioWorklet)</p>
+        <div class="pipe-row"><div class="pipe-node accent">Microphone / Stream</div><span class="pipe-arrow">→</span><div class="pipe-node">AudioWorkletNode</div></div>
+        <div class="pipe-row"><div class="pipe-node purple">Essentia WASM</div><span class="pipe-arrow">→</span><div class="pipe-node">Frame-by-frame</div></div>
+        <div class="pipe-row"><div class="pipe-node">RingBuffer</div><span class="pipe-arrow">→</span><div class="pipe-node green">Live Features</div></div>
+        <div class="pipe-row"><div class="pipe-node green">MessageChannel</div><span class="pipe-arrow">→</span><div class="pipe-node">ML Inference Worker</div></div>
+        <p style="font-size:0.75rem;color:var(--text2);margin-top:0.75rem">Use for: live BPM tracking from playing audio, breath-rate detection from mic, real-time mood updates during session.</p>
+      </div>
+    </div>
+  </div>
+
+  <div class="callout purple" style="margin-top:1rem">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <h4>WASM Import Rule — Critical</h4>
+      <p>Never import <code>essentia-wasm.es.js</code> on the main thread. Always load inside AudioWorklet or Web Worker. Main thread import will block the UI. The UMD build (<code>essentia-wasm.umd.js</code>) is for synchronous Worker contexts. ES build (<code>essentia-wasm.es.js</code>) is for AudioWorklets.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ALL ALGORITHMS -->
+<section id="algorithms">
+  <p class="section-label">03 — Algorithm Reference</p>
+  <h2>All Algorithms — Categorized for Mission Alive</h2>
+  <p>Every algorithm available. Highlighted ones are <span style="color:var(--accent3)">directly useful for Mission Alive</span>.</p>
+
+  <div class="tabs" id="algo-tabs">
+    <button class="tab-btn active" onclick="switchAlgo(event,'rhythm')">Rhythm</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'tonal')">Tonal / Key</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'spectral')">Spectral</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'timbre')">Timbre</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'loudness')">Loudness</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'pitch')">Pitch</button>
+    <button class="tab-btn" onclick="switchAlgo(event,'signal')">Signal</button>
+  </div>
+
+  <div class="tab-pane active" id="algo-rhythm">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">RhythmExtractor2013(signal)</span></td><td class="algo-out">bpm, beats[], confidence</td><td class="algo-use"><span class="algo-map">→ bpm param</span> Most accurate BPM. Use for track analysis. Needs 10+ seconds of audio.</td></tr>
+        <tr><td><span class="algo-name">BeatTrackerDegara(signal)</span></td><td class="algo-out">beats[] (time positions)</td><td class="algo-use"><span class="algo-map">→ beat_regularity</span> Beat timing for entrainment check</td></tr>
+        <tr><td><span class="algo-name">BeatTrackerMultiFeature(signal)</span></td><td class="algo-out">beats[], confidence</td><td class="algo-use">More robust multi-method. Use when single-method fails.</td></tr>
+        <tr><td><span class="algo-name">Danceability(signal)</span></td><td class="algo-out">danceability (0–1), dfa</td><td class="algo-use"><span class="algo-map">→ rhythmic_complexity proxy</span> DFA output directly useful</td></tr>
+        <tr><td><span class="algo-name">BeatsLoudness(signal, beats)</span></td><td class="algo-out">loudness[], loudnessBandRatio[]</td><td class="algo-use"><span class="algo-map">→ beat_regularity</span> Variance = beat regularity</td></tr>
+        <tr><td><span class="algo-name">BpmHistogramDescriptors(intervals)</span></td><td class="algo-out">firstPeakBPM, secondPeakBPM, ratio</td><td class="algo-use">Detect compound meter / polyrhythm</td></tr>
+        <tr><td><span class="algo-name">BpmRubato(beats)</span></td><td class="algo-out">rubatoStart[], rubatoStop[]</td><td class="algo-use">Detect rubato — avoid tracks with unstable tempo</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-tonal">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">Key(pcp)</span></td><td class="algo-out">key, scale, strength</td><td class="algo-use"><span class="algo-map">→ key_mode param</span> key=root note, scale=major/minor/other</td></tr>
+        <tr><td><span class="algo-name">KeyExtractor(audio)</span></td><td class="algo-out">key, scale, strength</td><td class="algo-use">One-call wrapper over HPCP → Key. Easiest to use.</td></tr>
+        <tr><td><span class="algo-name">HPCP(frequencies, magnitudes)</span></td><td class="algo-out">hpcp[] (12-dim or 36-dim)</td><td class="algo-use"><span class="algo-map">→ harmonic_tension</span> Entropy of HPCP = harmonic tension</td></tr>
+        <tr><td><span class="algo-name">ChordsDetection(pcp)</span></td><td class="algo-out">chords[], strength[]</td><td class="algo-use"><span class="algo-map">→ chord_complexity</span> Chord vocabulary size = complexity</td></tr>
+        <tr><td><span class="algo-name">ChordsDescriptors(chords, key)</span></td><td class="algo-out">chordsChangesRate, chordsNumberRate, chordsHistogram</td><td class="algo-use"><span class="algo-map">→ chord_complexity</span> changesRate directly maps</td></tr>
+        <tr><td><span class="algo-name">HighResolutionFeatures(hpcp)</span></td><td class="algo-out">equalTemperedDeviation, nonTemperedEnergyRatio</td><td class="algo-use">Detect microtonal / non-Western music. Filter out if needed.</td></tr>
+        <tr><td><span class="algo-name">Chromagram(frame)</span></td><td class="algo-out">chromagram[] (CQT-based)</td><td class="algo-use">Alternative to HPCP. Better for polyphonic content.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-spectral">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">SpectralCentroid(spectrum)</span></td><td class="algo-out">centroid (0–1 normalized)</td><td class="algo-use"><span class="algo-map">→ brightness param</span> Centroid = perceived brightness. High centroid = bright.</td></tr>
+        <tr><td><span class="algo-name">Flatness(spectrum)</span></td><td class="algo-out">flatness (0–1)</td><td class="algo-use"><span class="algo-map">→ roughness proxy</span> White noise=1.0, pure tone=0.0</td></tr>
+        <tr><td><span class="algo-name">Dissonance(frequencies, magnitudes)</span></td><td class="algo-out">dissonance (0–1)</td><td class="algo-use"><span class="algo-map">→ roughness param</span> Perceptual roughness. Direct mapping.</td></tr>
+        <tr><td><span class="algo-name">SpectralContrast(spectrum)</span></td><td class="algo-out">spectralContrast[], spectralValleys[]</td><td class="algo-use">Timbral richness / texture density</td></tr>
+        <tr><td><span class="algo-name">BarkBands(spectrum)</span></td><td class="algo-out">bands[24] (psychoacoustic scale)</td><td class="algo-use"><span class="algo-map">→ warmth</span> Low-Bark energy / total energy = warmth</td></tr>
+        <tr><td><span class="algo-name">ERBBands(spectrum)</span></td><td class="algo-out">bands[] (gammatone scale)</td><td class="algo-use">More accurate perceptual energy distribution</td></tr>
+        <tr><td><span class="algo-name">FrequencyBands(spectrum)</span></td><td class="algo-out">bands[] (customizable Hz)</td><td class="algo-use">Define custom bands. Use for sub-bass / HF separation.</td></tr>
+        <tr><td><span class="algo-name">HFC(spectrum)</span></td><td class="algo-out">hfc (scalar)</td><td class="algo-use"><span class="algo-map">→ brightness proxy</span> High frequency content. Simpler than centroid.</td></tr>
+        <tr><td><span class="algo-name">Inharmonicity(freq, mag)</span></td><td class="algo-out">inharmonicity (0–1)</td><td class="algo-use">Detect distorted/harsh timbres. Filter out.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-timbre">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">MFCC(spectrum)</span></td><td class="algo-out">mfcc[13], bands[]</td><td class="algo-use">Timbral fingerprint. Use for track similarity. Not directly wired to 16 params.</td></tr>
+        <tr><td><span class="algo-name">GFCC(spectrum)</span></td><td class="algo-out">gfcc[13], bands[]</td><td class="algo-use">Better than MFCC for non-speech. Use for embedding similarity.</td></tr>
+        <tr><td><span class="algo-name">BFCC(spectrum)</span></td><td class="algo-out">bfcc[13], bands[]</td><td class="algo-use">Bark-scale version. Most perceptually relevant for wellness.</td></tr>
+        <tr><td><span class="algo-name">Crest(array)</span></td><td class="algo-out">crest (>1)</td><td class="algo-use">Peak-to-mean ratio. High crest = percussive / dynamic. Low = drone-like.</td></tr>
+        <tr><td><span class="algo-name">DynamicComplexity(signal)</span></td><td class="algo-out">dynamicComplexity, loudness</td><td class="algo-use"><span class="algo-map">→ micro_variation proxy</span> Loudness fluctuation = organic variation</td></tr>
+        <tr><td><span class="algo-name">SpectralKurtosis(spectrum)</span></td><td class="algo-out">kurtosis</td><td class="algo-use">Spikiness of spectrum. High kurtosis = metallic/harsh.</td></tr>
+        <tr><td><span class="algo-name">SpectralSkewness(spectrum)</span></td><td class="algo-out">skewness</td><td class="algo-use">Spectral asymmetry. Positive = bass-heavy. Negative = treble-heavy.</td></tr>
+        <tr><td><span class="algo-name">Intensity(signal)</span></td><td class="algo-out">intensity (0=relax,1=moderate,2=aggressive)</td><td class="algo-use"><span class="algo-map">→ affect_arousal proxy</span> Ternary arousal estimate. Fast, no ML needed.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-loudness">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">LoudnessEBUR128(L, R)</span></td><td class="algo-out">integratedLoudness (LUFS), loudnessRange</td><td class="algo-use">Normalize track loudness before mixing with stems. Essential for Hybrid mode.</td></tr>
+        <tr><td><span class="algo-name">DynamicComplexity(signal)</span></td><td class="algo-out">complexity (0–1), loudness (0–1)</td><td class="algo-use"><span class="algo-map">→ silence_ratio proxy</span></td></tr>
+        <tr><td><span class="algo-name">Leq(signal)</span></td><td class="algo-out">leq (dB)</td><td class="algo-use">Equivalent sound level. Quick loudness check.</td></tr>
+        <tr><td><span class="algo-name">Larm(signal)</span></td><td class="algo-out">larm (dB)</td><td class="algo-use">Long-term average. Better than Leq for music.</td></tr>
+        <tr><td><span class="algo-name">SilenceRate20dB(signal)</span></td><td class="algo-out">rate (0–1)</td><td class="algo-use"><span class="algo-map">→ silence_ratio param</span> Direct mapping. Rate of frames below −20dB threshold.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-pitch">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Mission Alive Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">PitchYin(frame)</span></td><td class="algo-out">pitch (Hz), confidence</td><td class="algo-use">Single-frame pitch. Use for melodic stem matching. Not for polyphonic music.</td></tr>
+        <tr><td><span class="algo-name">PitchYinProbabilistic(signal)</span></td><td class="algo-out">pitch[], voicedProbabilities[]</td><td class="algo-use">Better for melody extraction from full mix. Use breath_actuator pitch correction.</td></tr>
+        <tr><td><span class="algo-name">HarmonicPeaks(freq, mag, pitch)</span></td><td class="algo-out">frequencies[], magnitudes[]</td><td class="algo-use">Extract harmonic series. Use to detect voice_range_presence.</td></tr>
+        <tr><td><span class="algo-name">Vibrato(pitch[])</span></td><td class="algo-out">vibratoFrequency, vibratoExtent</td><td class="algo-use">Detect organic vs synthetic performance quality.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+
+  <div class="tab-pane" id="algo-signal">
+    <div class="table-wrap">
+    <table class="algo-table">
+      <thead><tr><th>Algorithm</th><th>Output</th><th>Use</th></tr></thead>
+      <tbody>
+        <tr><td><span class="algo-name">FrameGenerator(audio, frameSize, hopSize)</span></td><td class="algo-out">frame iterator</td><td class="algo-use">Always the first step. Split audio into overlapping windows.</td></tr>
+        <tr><td><span class="algo-name">Windowing(frame, type)</span></td><td class="algo-out">windowed frame</td><td class="algo-use">Apply Hann/Hamming/Blackman window before FFT.</td></tr>
+        <tr><td><span class="algo-name">FFT(frame)</span></td><td class="algo-out">fft (complex)</td><td class="algo-use">Full FFT. Feed into spectrum algorithms.</td></tr>
+        <tr><td><span class="algo-name">Spectrum(frame)</span></td><td class="algo-out">spectrum (magnitude)</td><td class="algo-use">Magnitude spectrum. Most algorithms take this as input.</td></tr>
+        <tr><td><span class="algo-name">SpectralPeaks(spectrum)</span></td><td class="algo-out">frequencies[], magnitudes[]</td><td class="algo-use">Required before HPCP, Key, Dissonance algorithms.</td></tr>
+        <tr><td><span class="algo-name">EqualLoudness(signal)</span></td><td class="algo-out">filteredSignal</td><td class="algo-use">Apply A-weighting. Always use before perceptual analysis.</td></tr>
+        <tr><td><span class="algo-name">DCRemoval(signal)</span></td><td class="algo-out">signal</td><td class="algo-use">Remove DC offset. Always use as first pre-processing step.</td></tr>
+        <tr><td><span class="algo-name">arrayToVector(Float32Array)</span></td><td class="algo-out">WASM vector</td><td class="algo-use">Required adapter. Convert JS array to WASM-compatible type.</td></tr>
+        <tr><td><span class="algo-name">vectorToArray(WASMVector)</span></td><td class="algo-out">Float32Array</td><td class="algo-use">Convert WASM output back to JS. Call .delete() after to free memory.</td></tr>
+      </tbody>
+    </table>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- ML MODELS -->
+<section id="models">
+  <p class="section-label">04 — Machine Learning Models</p>
+  <h2>Pre-Trained Models — All Available</h2>
+  <p>These run via TensorFlow.js. Input is always pre-extracted audio embeddings (VGGish, MusiCNN, or EffNet). Two stages: embed → classify/regress.</p>
+
+  <div class="callout warn">
+    <span class="callout-icon">⚠️</span>
+    <div class="callout-body">
+      <h4>Two-Stage Pipeline Required</h4>
+      <p>Models do NOT take raw audio. You must first extract embeddings using <code>EssentiaTFInputExtractor</code> (which computes mel-spectrograms and runs them through a backbone model like MusiCNN), then feed those embeddings to the classifier/regressor. This adds ~200–800ms overhead per track.</p>
+    </div>
+  </div>
+
+  <h3 style="margin-top:1.75rem">Mood Models — Mission Alive Priority</h3>
+  <div class="grid-3" style="margin-bottom:1.5rem">
+    <div class="model-card">
+      <div class="model-name">deam-audioset-vggish-2</div>
+      <div class="model-task">Arousal + Valence Regression (continuous)</div>
+      <div class="model-desc">Returns [arousal, valence] as continuous values. Range: 1–9 (normalize to 0–1). Trained on DEAM dataset (1000 clips rated by humans). <strong>Most directly maps to Mission Alive's affect_arousal / affect_valence.</strong></div>
+      <span class="model-badge key">→ affect_arousal</span>
+      <span class="model-badge key">→ affect_valence</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">emomusic-msd-musicnn-2</div>
+      <div class="model-task">Arousal + Valence Regression</div>
+      <div class="model-desc">Trained on emoMusic (744 clips × 30s). Returns continuous arousal/valence. Backbone: MusiCNN trained on Million Song Dataset. Often more accurate for popular music than DEAM.</div>
+      <span class="model-badge key">→ affect_arousal</span>
+      <span class="model-badge key">→ affect_valence</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">muse-msd-musicnn-2</div>
+      <div class="model-task">Arousal + Valence Regression</div>
+      <div class="model-desc">Trained on MuSE dataset. Best generalization across diverse music genres. Use as ensemble vote with deam + emomusic for most robust estimate.</div>
+      <span class="model-badge key">→ affect_arousal</span>
+      <span class="model-badge key">→ affect_valence</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">mood_relaxed-discogs-effnet-1</div>
+      <div class="model-task">Binary: relaxed / not relaxed</div>
+      <div class="model-desc">P(relaxed) score (0–1). Use as fast filter: reject tracks with P(relaxed) < 0.4 for INTEGRATE phase. EffNet backbone = best accuracy for music classification.</div>
+      <span class="model-badge key">→ INTEGRATE filter</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">mood_aggressive-discogs-effnet-1</div>
+      <div class="model-task">Binary: aggressive / not</div>
+      <div class="model-desc">P(aggressive) score. Hard reject: if P(aggressive) > 0.3 for any session type. Aggressive tracks contradict parasympathetic goals.</div>
+      <span class="model-badge warn">Hard reject filter</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">mtg_jamendo_moodtheme-discogs-effnet-1</div>
+      <div class="model-task">Multi-label: 56 mood/theme tags</div>
+      <div class="model-desc">Returns probability for each of 56 tags including: calm, happy, energetic, melancholic, relaxing, uplifting, meditative, atmospheric. Rich classification. Use for session type matching.</div>
+      <span class="model-badge key">→ session type filter</span>
+    </div>
+  </div>
+
+  <h3>Energy + Engagement Models</h3>
+  <div class="grid-3" style="margin-bottom:1.5rem">
+    <div class="model-card">
+      <div class="model-name">danceability-discogs-effnet-1</div>
+      <div class="model-task">Binary: danceable / not</div>
+      <div class="model-desc">P(danceable). High score = strong rhythmic pulse = high rhythmic_complexity. Invert for calm sessions.</div>
+      <span class="model-badge key">→ rhythmic_complexity</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">approachability-discogs-effnet-1</div>
+      <div class="model-task">3-class: approachable</div>
+      <div class="model-desc">Mainstream accessibility. Low approachability = experimental/harsh = filter out for therapy contexts.</div>
+      <span class="model-badge key">→ filter</span>
+    </div>
+    <div class="model-card">
+      <div class="model-name">engagement-discogs-effnet-1</div>
+      <div class="model-task">Listener engagement prediction</div>
+      <div class="model-desc">Predicts whether a track engages listeners. High engagement during ENTRAIN phase helps hook users. Moderate during INTEGRATE.</div>
+      <span class="model-badge key">→ session engagement</span>
+    </div>
+  </div>
+
+  <h3>The Embedding Backbone Models</h3>
+  <div class="callout info">
+    <span class="callout-icon">🏗️</span>
+    <div class="callout-body">
+      <h4>Best Backbone for Mission Alive: discogs-effnet</h4>
+      <p>Three backbone choices: <strong>VGGish</strong> (generic audio, fast), <strong>MusiCNN</strong> (music-specific, slower), <strong>Discogs-EffNet</strong> (trained on 500K Discogs tracks, most competitive on downstream music tasks). Use EffNet for mood/valence/arousal. Use MusiCNN when EffNet model not available. VGGish as fallback only.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- REAL-TIME -->
+<section id="realtime">
+  <p class="section-label">05 — Real-Time Analysis</p>
+  <h2>AudioWorklet Pattern — Step by Step</h2>
+  <p>Real-time analysis runs on the audio rendering thread via AudioWorklet. Essentia WASM loads inside the worklet. Features extracted every audio frame (128 samples = ~3ms at 44.1kHz).</p>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Setup: Install and Import</h3>
+        <pre><span class="cmt">// In terminal</span>
+npm install essentia.js @tensorflow/tfjs
+
+<span class="cmt">// Vite config — allow WASM (add to vite.config.js)</span>
+<span class="kw">export default</span> {
+  optimizeDeps: { exclude: [<span class="str">'essentia.js'</span>] },
+  server: { headers: { <span class="str">'Cross-Origin-Opener-Policy'</span>: <span class="str">'same-origin'</span>, <span class="str">'Cross-Origin-Embedder-Policy'</span>: <span class="str">'require-corp'</span> } }
+}<span class="lang-tag">vite.config.js</span></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Create the AudioWorklet Processor File</h3>
+        <p>This file runs on the audio rendering thread. It imports Essentia WASM and extracts features per frame.</p>
+        <pre><span class="cmt">// public/essentia-worklet.js</span>
+<span class="cmt">// Must be a static file — not processed by Vite bundler</span>
+
+<span class="kw">import</span> { EssentiaWASM } <span class="kw">from</span> <span class="str">'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.es.js'</span>;
+<span class="kw">import</span> Essentia <span class="kw">from</span> <span class="str">'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.es.js'</span>;
+
+<span class="kw">let</span> <span class="vr">essentia</span> = <span class="kw">new</span> <span class="fn">Essentia</span>(EssentiaWASM);
+
+<span class="kw">class</span> <span class="fn">EssentiaWorklet</span> <span class="kw">extends</span> AudioWorkletProcessor {
+  constructor() {
+    <span class="kw">super</span>();
+    <span class="kw">this</span>._sampleRate = sampleRate; <span class="cmt">// global in worklet</span>
+    <span class="kw">this</span>._buffer = []; <span class="cmt">// accumulate frames for BPM analysis</span>
+    <span class="kw">this</span>._frameCount = <span class="nm">0</span>;
+  }
+
+  process(inputs) {
+    <span class="kw">const</span> <span class="vr">input</span> = inputs[<span class="nm">0</span>];
+    <span class="kw">if</span> (!input || !input[<span class="nm">0</span>]) <span class="kw">return true</span>;
+
+    <span class="kw">const</span> <span class="vr">frame</span> = input[<span class="nm">0</span>]; <span class="cmt">// Float32Array, 128 samples</span>
+    <span class="kw">this</span>._buffer.push(...frame);
+    <span class="kw">this</span>._frameCount++;
+
+    <span class="cmt">// Extract RMS every frame (instant)</span>
+    <span class="kw">const</span> <span class="vr">vec</span> = essentia.<span class="fn">arrayToVector</span>(frame);
+    <span class="kw">const</span> { <span class="vr">rms</span> } = essentia.<span class="fn">RMS</span>(vec);
+    vec.<span class="fn">delete</span>(); <span class="cmt">// CRITICAL: always free WASM memory</span>
+
+    <span class="cmt">// Extract BPM every 10 seconds (~430 frames at 44.1kHz)</span>
+    <span class="kw">if</span> (<span class="kw">this</span>._frameCount % <span class="nm">430</span> === <span class="nm">0</span> && <span class="kw">this</span>._buffer.length > <span class="nm">441000</span>) {
+      <span class="kw">const</span> <span class="vr">signal</span> = essentia.<span class="fn">arrayToVector</span>(<span class="kw">new</span> <span class="fn">Float32Array</span>(<span class="kw">this</span>._buffer));
+      <span class="kw">const</span> { <span class="vr">bpm</span>, <span class="vr">confidence</span> } = essentia.<span class="fn">RhythmExtractor2013</span>(signal);
+      signal.<span class="fn">delete</span>();
+      <span class="kw">this</span>._buffer = <span class="kw">this</span>._buffer.slice(-<span class="nm">220500</span>); <span class="cmt">// keep last 5s</span>
+      <span class="kw">this</span>.port.<span class="fn">postMessage</span>({ type: <span class="str">'bpm'</span>, bpm, confidence });
+    }
+
+    <span class="cmt">// Post RMS every 10 frames (~30ms)</span>
+    <span class="kw">if</span> (<span class="kw">this</span>._frameCount % <span class="nm">10</span> === <span class="nm">0</span>) {
+      <span class="kw">this</span>.port.<span class="fn">postMessage</span>({ type: <span class="str">'rms'</span>, rms });
+    }
+
+    <span class="kw">return true</span>;
+  }
+}
+
+<span class="fn">registerProcessor</span>(<span class="str">'essentia-worklet'</span>, EssentiaWorklet);<span class="lang-tag">public/essentia-worklet.js</span></pre>
+      </div>
+    </div>
+
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Wire into Mission Alive's session_audio.js</h3>
+        <pre><span class="cmt">// frontend/src/audio/essentia_analyzer.js</span>
+
+<span class="kw">export class</span> <span class="fn">EssentiaAnalyzer</span> {
+  constructor() {
+    <span class="kw">this</span>._node = <span class="kw">null</span>;
+    <span class="kw">this</span>._ctx = <span class="kw">null</span>;
+    <span class="kw">this</span>._onFeatures = <span class="kw">null</span>;
+  }
+
+  async <span class="fn">init</span>(audioContext, onFeatures) {
+    <span class="kw">this</span>._ctx = audioContext;
+    <span class="kw">this</span>._onFeatures = onFeatures;
+    await audioContext.audioWorklet.<span class="fn">addModule</span>(<span class="str">'/essentia-worklet.js'</span>);
+    <span class="kw">this</span>._node = <span class="kw">new</span> <span class="fn">AudioWorkletNode</span>(audioContext, <span class="str">'essentia-worklet'</span>);
+    <span class="kw">this</span>._node.port.onmessage = (e) => onFeatures(e.data);
+    <span class="kw">return this</span>._node;
+  }
+
+  <span class="fn">connectSource</span>(sourceNode) {
+    <span class="cmt">// sourceNode can be microphone, Tone.js master, etc.</span>
+    sourceNode.<span class="fn">connect</span>(<span class="kw">this</span>._node);
+    <span class="cmt">// Don't connect to destination — analyzer doesn't output audio</span>
+  }
+
+  <span class="fn">disconnect</span>() {
+    <span class="kw">this</span>._node?..<span class="fn">disconnect</span>();
+  }
+}
+
+<span class="cmt">// In session_audio.js — add to start() method:</span>
+<span class="kw">this</span>._analyzer = <span class="kw">new</span> <span class="fn">EssentiaAnalyzer</span>();
+<span class="kw">const</span> <span class="vr">analyzerNode</span> = await <span class="kw">this</span>._analyzer.<span class="fn">init</span>(Tone.context.rawContext, (features) => {
+  <span class="kw">if</span> (features.type === <span class="str">'bpm'</span> && features.confidence > <span class="nm">0.7</span>) {
+    <span class="cmt">// Update playing track BPM display or adjust binaural timing</span>
+    <span class="kw">this</span>._sessionStore.<span class="fn">setLiveBPM</span>(features.bpm);
+  }
+});<span class="lang-tag">essentia_analyzer.js</span></pre>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- OFFLINE ANALYSIS -->
+<section id="offline">
+  <p class="section-label">06 — Offline Track Analysis</p>
+  <h2>Full Track Feature Extraction (Web Worker)</h2>
+  <p>Use this to pre-analyze any audio track before queuing it. Returns all 9 Mission Alive-relevant features. Runs in ~300–800ms per track on modern hardware.</p>
+
+  <pre><span class="cmt">// frontend/src/audio/track_analyzer.worker.js</span>
+
+<span class="fn">importScripts</span>(<span class="str">'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia-wasm.umd.js'</span>);
+<span class="fn">importScripts</span>(<span class="str">'https://cdn.jsdelivr.net/npm/essentia.js@0.1.3/dist/essentia.js-core.umd.js'</span>);
+
+<span class="kw">const</span> <span class="vr">essentia</span> = <span class="kw">new</span> <span class="fn">Essentia</span>(EssentiaWASM);
+
+<span class="kw">async function</span> <span class="fn">analyzeTrack</span>(audioBuffer) {
+  <span class="kw">const</span> <span class="vr">sr</span> = audioBuffer.sampleRate;
+  <span class="kw">const</span> <span class="vr">raw</span> = audioBuffer.getChannelData(<span class="nm">0</span>); <span class="cmt">// mono</span>
+
+  <span class="cmt">// Pre-process</span>
+  <span class="kw">let</span> <span class="vr">signal</span> = essentia.<span class="fn">arrayToVector</span>(raw);
+  signal = essentia.<span class="fn">DCRemoval</span>(signal).signal;
+  signal = essentia.<span class="fn">EqualLoudness</span>(signal, sr).signal;
+
+  <span class="cmt">// ── RHYTHM ──────────────────────────────────────────────────────</span>
+  <span class="kw">const</span> <span class="vr">rhythm</span> = essentia.<span class="fn">RhythmExtractor2013</span>(signal, sr);
+  <span class="kw">const</span> <span class="vr">bpm</span> = rhythm.bpm;
+  <span class="kw">const</span> <span class="vr">bpm_confidence</span> = rhythm.confidence;
+  <span class="kw">const</span> <span class="vr">beats</span> = essentia.<span class="fn">vectorToArray</span>(rhythm.ticks);
+  rhythm.ticks.<span class="fn">delete</span>(); rhythm.bpmEstimates.<span class="fn">delete</span>();
+
+  <span class="kw">const</span> <span class="vr">danceResult</span> = essentia.<span class="fn">Danceability</span>(signal, <span class="nm">2</span>, <span class="nm">8800</span>, sr, <span class="nm">1.5</span>);
+  <span class="kw">const</span> <span class="vr">danceability</span> = danceResult.danceability;
+
+  <span class="cmt">// ── TONAL ────────────────────────────────────────────────────────</span>
+  <span class="kw">const</span> <span class="vr">keyResult</span> = essentia.<span class="fn">KeyExtractor</span>(signal, <span class="kw">true</span>, <span class="nm">4096</span>, <span class="nm">4096</span>, <span class="nm">12</span>, <span class="nm">3500</span>, <span class="nm">60</span>, <span class="nm">25</span>, <span class="nm">0.2</span>, <span class="nm">440</span>, <span class="nm">10000</span>, <span class="nm">3500</span>, sr);
+  <span class="kw">const</span> <span class="vr">key</span> = keyResult.key;       <span class="cmt">// e.g. "C", "F#"</span>
+  <span class="kw">const</span> <span class="vr">scale</span> = keyResult.scale;   <span class="cmt">// "major" | "minor"</span>
+  <span class="kw">const</span> <span class="vr">key_strength</span> = keyResult.strength; <span class="cmt">// 0–1, use as confidence</span>
+  <span class="kw">const</span> <span class="vr">key_mode</span> = scale === <span class="str">'major'</span> ? <span class="nm">1</span> : <span class="nm">0</span>; <span class="cmt">// maps directly to MA param</span>
+
+  <span class="cmt">// ── SPECTRAL (frame-based) ────────────────────────────────────────</span>
+  <span class="kw">let</span> <span class="vr">brightnessSum</span> = <span class="nm">0</span>, <span class="vr">roughnessSum</span> = <span class="nm">0</span>, <span class="vr">warmthSum</span> = <span class="nm">0</span>, <span class="vr">frameN</span> = <span class="nm">0</span>;
+  <span class="kw">const</span> <span class="vr">frames</span> = essentia.<span class="fn">FrameGenerator</span>(signal, <span class="nm">2048</span>, <span class="nm">1024</span>);
+
+  <span class="kw">for</span> (<span class="kw">let</span> <span class="vr">i</span> = <span class="nm">0</span>; i < frames.<span class="fn">size</span>(); i++) {
+    <span class="kw">const</span> <span class="vr">windowed</span> = essentia.<span class="fn">Windowing</span>(frames.<span class="fn">get</span>(i), <span class="kw">true</span>, <span class="nm">0</span>, <span class="str">'hann'</span>, <span class="kw">true</span>, <span class="nm">2048</span>);
+    <span class="kw">const</span> <span class="vr">spectrum</span> = essentia.<span class="fn">Spectrum</span>(windowed.frame, <span class="nm">2048</span>);
+    <span class="kw">const</span> <span class="vr">peaks</span> = essentia.<span class="fn">SpectralPeaks</span>(spectrum.spectrum);
+
+    <span class="cmt">// Brightness = spectral centroid</span>
+    <span class="kw">const</span> <span class="vr">centroid</span> = essentia.<span class="fn">Centroid</span>(spectrum.spectrum, sr / <span class="nm">2</span>);
+    brightnessSum += centroid.centroid;
+
+    <span class="cmt">// Roughness = perceptual dissonance</span>
+    <span class="kw">if</span> (peaks.magnitudes.<span class="fn">size</span>() > <span class="nm">1</span>) {
+      <span class="kw">const</span> <span class="vr">diss</span> = essentia.<span class="fn">Dissonance</span>(peaks.frequencies, peaks.magnitudes);
+      roughnessSum += diss.dissonance;
+      diss.frequencies?..<span class="fn">delete</span>();
+    }
+
+    <span class="cmt">// Warmth = relative energy in Bark bands 0–5 (bass region)</span>
+    <span class="kw">const</span> <span class="vr">bark</span> = essentia.<span class="fn">BarkBands</span>(spectrum.spectrum, <span class="nm">24</span>, sr);
+    <span class="kw">const</span> <span class="vr">barkArr</span> = essentia.<span class="fn">vectorToArray</span>(bark.bands);
+    <span class="kw">const</span> <span class="vr">totalE</span> = barkArr.<span class="fn">reduce</span>((a, b) => a + b, <span class="nm">0</span>);
+    <span class="kw">const</span> <span class="vr">bassE</span> = barkArr.<span class="fn">slice</span>(<span class="nm">0</span>, <span class="nm">5</span>).<span class="fn">reduce</span>((a, b) => a + b, <span class="nm">0</span>);
+    warmthSum += totalE > <span class="nm">0</span> ? bassE / totalE : <span class="nm">0</span>;
+    bark.bands.<span class="fn">delete</span>();
+
+    <span class="cmt">// Cleanup WASM vectors every frame — critical for memory</span>
+    peaks.frequencies.<span class="fn">delete</span>(); peaks.magnitudes.<span class="fn">delete</span>();
+    spectrum.spectrum.<span class="fn">delete</span>(); windowed.frame.<span class="fn">delete</span>();
+    frameN++;
+  }
+
+  <span class="kw">const</span> <span class="vr">brightness</span> = brightnessSum / frameN;
+  <span class="kw">const</span> <span class="vr">roughness</span> = roughnessSum / frameN;
+  <span class="kw">const</span> <span class="vr">warmth</span> = warmthSum / frameN;
+
+  <span class="cmt">// ── SILENCE ──────────────────────────────────────────────────────</span>
+  <span class="kw">const</span> <span class="vr">dynC</span> = essentia.<span class="fn">DynamicComplexity</span>(signal, <span class="nm">2048</span>, sr);
+  <span class="kw">const</span> <span class="vr">silence_ratio</span> = <span class="nm">1</span> - dynC.dynamicComplexity; <span class="cmt">// invert: low complexity = high silence</span>
+
+  <span class="cmt">// ── CLEANUP ───────────────────────────────────────────────────────</span>
+  signal.<span class="fn">delete</span>();
+
+  <span class="kw">return</span> {
+    bpm: <span class="fn">Math.round</span>(bpm),       <span class="cmt">// 60–180</span>
+    bpm_confidence,               <span class="cmt">// 0–1, reject if < 0.5</span>
+    key,                          <span class="cmt">// "C", "G#", etc.</span>
+    scale,                        <span class="cmt">// "major" | "minor"</span>
+    key_mode,                     <span class="cmt">// 0 | 1 (maps to MA param)</span>
+    key_strength,                 <span class="cmt">// 0–1</span>
+    danceability,                 <span class="cmt">// 0–1</span>
+    brightness,                   <span class="cmt">// 0–1 (normalized centroid)</span>
+    roughness,                    <span class="cmt">// 0–1 (dissonance mean)</span>
+    warmth,                       <span class="cmt">// 0–1 (bass energy fraction)</span>
+    silence_ratio,                <span class="cmt">// 0–1</span>
+  };
+}
+
+<span class="vr">self</span>.onmessage = <span class="kw">async</span> (e) => {
+  <span class="kw">try</span> {
+    <span class="kw">const</span> <span class="vr">features</span> = <span class="kw">await</span> <span class="fn">analyzeTrack</span>(e.data.audioBuffer);
+    <span class="vr">self</span>.<span class="fn">postMessage</span>({ status: <span class="str">'ok'</span>, features, trackId: e.data.trackId });
+  } <span class="kw">catch</span> (err) {
+    <span class="vr">self</span>.<span class="fn">postMessage</span>({ status: <span class="str">'error'</span>, error: err.message, trackId: e.data.trackId });
+  }
+};<span class="lang-tag">track_analyzer.worker.js</span></pre>
+
+  <div class="callout tip">
+    <span class="callout-icon">💡</span>
+    <div class="callout-body">
+      <h4>Memory Management Is Critical</h4>
+      <p>Every WASM vector must be manually freed with <code>.delete()</code> after use. Forgetting this causes memory leaks that crash the browser tab after 10–20 analyses. Use try/finally blocks in production to guarantee cleanup.</p>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- MAPPING -->
+<section id="mapping">
+  <p class="section-label">07 — Mission Alive Mapping</p>
+  <h2>Essentia Output → Mission Alive 16 Params</h2>
+  <p>Complete mapping. Every Mission Alive music parameter has an Essentia source.</p>
+
+  <div class="table-wrap">
+  <table class="map-table">
+    <thead>
+      <tr>
+        <th>MA Param</th>
+        <th>Tier</th>
+        <th>Essentia Algorithm(s)</th>
+        <th>Formula</th>
+        <th>Notes</th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr><td><span class="map-ma">bpm</span></td><td>Temporal</td><td><span class="map-es">RhythmExtractor2013</span></td><td>Direct: rhythm.bpm</td><td>Accept if confidence > 0.6. Range-clamp to 60–110.</td></tr>
+      <tr><td><span class="map-ma">rhythmic_complexity</span></td><td>Temporal</td><td><span class="map-es">Danceability + BeatsLoudness</span></td><td>1 - danceability (inverted) or variance of beatsLoudness</td><td>High danceability = regular beat = low complexity</td></tr>
+      <tr><td><span class="map-ma">beat_regularity</span></td><td>Temporal</td><td><span class="map-es">BeatTrackerMultiFeature</span></td><td>1 - std(diff(beats)) / mean(diff(beats))</td><td>Coefficient of variation of inter-beat intervals</td></tr>
+      <tr><td><span class="map-ma">silence_ratio</span></td><td>Temporal</td><td><span class="map-es">DynamicComplexity or SilenceRate</span></td><td>silenceRate20dB.silenceRate</td><td>Direct mapping. 0=dense, 1=sparse</td></tr>
+      <tr><td><span class="map-ma">key_mode</span></td><td>Harmonic</td><td><span class="map-es">KeyExtractor</span></td><td>scale === 'major' ? 1 : 0</td><td>Direct 1:1. Strength &lt; 0.2 → ambiguous, skip</td></tr>
+      <tr><td><span class="map-ma">harmonic_tension</span></td><td>Harmonic</td><td><span class="map-es">HPCP → entropy or dissonance</span></td><td>Entropy of mean HPCP vector across frames</td><td>High entropy = atonal/tense. Low = diatonic/calm</td></tr>
+      <tr><td><span class="map-ma">chord_complexity</span></td><td>Harmonic</td><td><span class="map-es">ChordsDescriptors</span></td><td>chordsChangesRate (chords per second)</td><td>Normalize by typical max (1.0 changes/s = high)</td></tr>
+      <tr><td><span class="map-ma">voice_range_presence</span></td><td>Harmonic</td><td><span class="map-es">HPCP high-range + HarmonicPeaks</span></td><td>Energy in HPCP bins 48–80 (upper voice range)</td><td>Upper HPCP energy = vocal/melodic presence</td></tr>
+      <tr><td><span class="map-ma">brightness</span></td><td>Timbral</td><td><span class="map-es">Centroid (EqualLoudness filtered)</span></td><td>mean(centroid) / (sr/2) normalized to 0–1</td><td>High = bright/harsh. Low = warm/muffled</td></tr>
+      <tr><td><span class="map-ma">roughness</span></td><td>Timbral</td><td><span class="map-es">Dissonance</span></td><td>mean(dissonance) across frames</td><td>0 = pure/smooth. 1 = rough/harsh. Filter > 0.6</td></tr>
+      <tr><td><span class="map-ma">warmth</span></td><td>Timbral</td><td><span class="map-es">BarkBands</span></td><td>sum(barkBands[0:5]) / sum(barkBands)</td><td>Bass fraction = warmth. Target 0.3–0.5 for therapy</td></tr>
+      <tr><td><span class="map-ma">spatial_width</span></td><td>Timbral</td><td><span class="map-es">Not in Essentia — use Tone.js</span></td><td>N/A — computed by OrganicVariation</td><td>No stereo width algorithm in Essentia.js WASM</td></tr>
+      <tr><td><span class="map-ma">binaural_beat_hz</span></td><td>Biological</td><td><span class="map-es">Not from track — HRV-derived only</span></td><td>HRV arousal → binaural Hz formula</td><td>Never from audio analysis. Always from physiology.</td></tr>
+      <tr><td><span class="map-ma">breath_sync_ratio</span></td><td>Biological</td><td><span class="map-es">BeatTrackerMultiFeature → sub-BPM</span></td><td>bpm_from_low_energy_envelope / 60 * 0.6</td><td>Low-rate modulation in track ≈ breath sync hint</td></tr>
+      <tr><td><span class="map-ma">micro_variation</span></td><td>Biological</td><td><span class="map-es">DynamicComplexity + BpmRubato</span></td><td>(dynamicComplexity * 0.6) + (hasRubato ? 0.4 : 0)</td><td>High micro_variation = organic, not robotic</td></tr>
+      <tr style="background:rgba(0,255,136,0.04)"><td colspan="5" style="color:var(--accent3);font-size:0.78rem;padding:0.5rem 1rem"><strong>ML models add:</strong> affect_arousal (deam/emomusic regression), affect_valence (same), mood classification (mtg_jamendo 56-class)</td></tr>
+    </tbody>
+  </table>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- INTEGRATION ARCHITECTURE -->
+<section id="integration">
+  <p class="section-label">08 — Mission Alive Integration</p>
+  <h2>Where Essentia.js Lives in the App</h2>
+
+  <div class="pipeline">
+    <p style="font-size:0.75rem;color:var(--accent);font-weight:700;margin-bottom:1.25rem;text-transform:uppercase;letter-spacing:0.1em">Essentia.js Touch Points in Mission Alive</p>
+
+    <div style="display:grid;gap:1rem">
+      <div style="background:rgba(0,229,255,0.05);border:1px solid rgba(0,229,255,0.15);border-radius:8px;padding:1rem">
+        <p style="font-size:0.75rem;color:var(--accent);font-weight:700;margin-bottom:0.5rem">Touch Point 1 — Pre-Session Track Validation</p>
+        <p style="font-size:0.82rem;color:var(--text2)">When user picks a track (from curated playlist or their library), run offline analysis via Web Worker before queuing. Check: BPM matches target ± 15%, instrumentalness proxy (low vocals = high HPCP flatness), roughness &lt; 0.5, key_mode matches target. Reject and auto-pick next if criteria fail.</p>
+        <p style="font-size:0.78rem;color:var(--accent3);margin-top:0.4rem">File: <code>frontend/src/audio/track_validator.js</code> (new)</p>
+      </div>
+      <div style="background:rgba(123,97,255,0.05);border:1px solid rgba(123,97,255,0.15);border-radius:8px;padding:1rem">
+        <p style="font-size:0.75rem;color:var(--accent2);font-weight:700;margin-bottom:0.5rem">Touch Point 2 — Live Arousal/Valence from Playing Audio</p>
+        <p style="font-size:0.82rem;color:var(--text2)">ML model pipeline running every 3s on currently playing audio (via AudioWorklet + Worker). Outputs affect_arousal + affect_valence from audio content. Feeds into ISO bridge as a <em>second</em> source of affect signal alongside HRV. Weighted: HRV 70%, audio_ML 30%.</p>
+        <p style="font-size:0.78rem;color:var(--accent3);margin-top:0.4rem">File: <code>frontend/src/audio/affect_inferencer.js</code> (new)</p>
+      </div>
+      <div style="background:rgba(0,255,136,0.05);border:1px solid rgba(0,255,136,0.15);border-radius:8px;padding:1rem">
+        <p style="font-size:0.75rem;color:var(--accent3);font-weight:700;margin-bottom:0.5rem">Touch Point 3 — Post-Session Playlist Analysis</p>
+        <p style="font-size:0.82rem;color:var(--text2)">After session ends, batch-analyze top 20 candidate tracks for next playlist. Run offline in background Worker. Cache features in localStorage. On next session start, features are pre-computed. No blocking, no wait.</p>
+        <p style="font-size:0.78rem;color:var(--accent3);margin-top:0.4rem">File: <code>frontend/src/audio/playlist_cache.js</code> (new)</p>
+      </div>
+      <div style="background:rgba(255,107,53,0.05);border:1px solid rgba(255,107,53,0.15);border-radius:8px;padding:1rem">
+        <p style="font-size:0.75rem;color:var(--warn);font-weight:700;margin-bottom:0.5rem">Touch Point 4 — Loudness Normalization</p>
+        <p style="font-size:0.82rem;color:var(--text2)">All external music must be normalized to the same perceived loudness before mixing with Mission Alive's stems. Use <code>LoudnessEBUR128</code> to measure track loudness (in LUFS). Apply a gain correction so all tracks hit −16 LUFS target (matches streaming standard). Essential for hybrid mode.</p>
+        <p style="font-size:0.78rem;color:var(--accent3);margin-top:0.4rem">Runs inside track_validator.js</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- FULL ML CODE -->
+<section id="code">
+  <p class="section-label">09 — ML Inference Code</p>
+  <h2>Full Arousal/Valence Prediction Pipeline</h2>
+  <p>Two-worker pattern: Worker A extracts mel-spectrogram embeddings (CPU-heavy), Worker B runs TensorFlow.js inference (GPU via WebGL).</p>
+
+  <pre><span class="cmt">// frontend/src/audio/affect_inferencer.js</span>
+<span class="cmt">// Runs on main thread — coordinates two workers</span>
+
+<span class="kw">import</span> { EssentiaWASM } <span class="kw">from</span> <span class="str">'essentia.js'</span>;
+<span class="kw">import</span> { EssentiaModel } <span class="kw">from</span> <span class="str">'essentia.js/dist/essentia.js-model.umd.js'</span>;
+
+<span class="kw">export class</span> <span class="fn">AffectInferencer</span> {
+  constructor() {
+    <span class="kw">this</span>._extractorWorker = <span class="kw">null</span>;
+    <span class="kw">this</span>._inferenceWorker = <span class="kw">null</span>;
+    <span class="kw">this</span>._onResult = <span class="kw">null</span>;
+    <span class="kw">this</span>._ready = <span class="kw">false</span>;
+  }
+
+  async <span class="fn">init</span>(onResult) {
+    <span class="kw">this</span>._onResult = onResult;
+
+    <span class="cmt">// Worker 1: mel-spectrogram extraction (Essentia WASM)</span>
+    <span class="kw">this</span>._extractorWorker = <span class="kw">new</span> <span class="fn">Worker</span>(<span class="kw">new</span> <span class="fn">URL</span>(<span class="str">'./embed_extractor.worker.js'</span>, <span class="kw">import</span>.meta.url));
+
+    <span class="cmt">// Worker 2: model inference (TensorFlow.js)</span>
+    <span class="kw">this</span>._inferenceWorker = <span class="kw">new</span> <span class="fn">Worker</span>(<span class="kw">new</span> <span class="fn">URL</span>(<span class="str">'./mood_inference.worker.js'</span>, <span class="kw">import</span>.meta.url));
+
+    <span class="cmt">// Chain: extractor → inference</span>
+    <span class="kw">this</span>._extractorWorker.onmessage = (e) => {
+      <span class="kw">this</span>._inferenceWorker.<span class="fn">postMessage</span>({ type: <span class="str">'infer'</span>, embeddings: e.data.embeddings });
+    };
+
+    <span class="kw">this</span>._inferenceWorker.onmessage = (e) => {
+      <span class="kw">if</span> (e.data.type === <span class="str">'ready'</span>) { <span class="kw">this</span>._ready = <span class="kw">true</span>; <span class="kw">return</span>; }
+      <span class="kw">if</span> (e.data.type === <span class="str">'predictions'</span>) {
+        <span class="kw">const</span> { <span class="vr">arousal</span>, <span class="vr">valence</span>, <span class="vr">moods</span> } = e.data;
+        onResult({ arousal, valence, moods });
+      }
+    };
+
+    <span class="cmt">// Wait for model to load</span>
+    await <span class="kw">new</span> <span class="fn">Promise</span>((<span class="vr">res</span>) => {
+      <span class="kw">const</span> <span class="vr">orig</span> = <span class="kw">this</span>._inferenceWorker.onmessage;
+      <span class="kw">this</span>._inferenceWorker.onmessage = (e) => {
+        <span class="kw">if</span> (e.data.type === <span class="str">'ready'</span>) { <span class="kw">this</span>._ready = <span class="kw">true</span>; <span class="fn">res</span>(); }
+        <span class="vr">orig</span>?.(e);
+      };
+    });
+  }
+
+  <span class="fn">analyze</span>(audioSignal) {
+    <span class="kw">if</span> (!<span class="kw">this</span>._ready) <span class="kw">return</span>;
+    <span class="kw">this</span>._extractorWorker.<span class="fn">postMessage</span>({ type: <span class="str">'extract'</span>, audio: audioSignal }, [audioSignal.buffer]);
+  }
+}
+
+<span class="cmt">// ─── embed_extractor.worker.js ─────────────────────────────────</span>
+<span class="fn">importScripts</span>(<span class="str">'essentia-wasm.umd.js'</span>);
+<span class="fn">importScripts</span>(<span class="str">'essentia.js-model.umd.js'</span>);
+
+EssentiaWASM().<span class="fn">then</span>((wasm) => {
+  <span class="kw">const</span> <span class="vr">extractor</span> = <span class="kw">new</span> EssentiaModel.<span class="fn">EssentiaTFInputExtractor</span>(wasm, <span class="str">'discogs-effnet'</span>, <span class="kw">false</span>);
+  <span class="vr">self</span>.onmessage = (e) => {
+    <span class="kw">if</span> (e.data.type === <span class="str">'extract'</span>) {
+      <span class="kw">const</span> <span class="vr">embeddings</span> = extractor.<span class="fn">computeFrameWise</span>(e.data.audio, <span class="nm">256</span>);
+      <span class="vr">self</span>.<span class="fn">postMessage</span>({ embeddings });
+    }
+  };
+});
+
+<span class="cmt">// ─── mood_inference.worker.js ──────────────────────────────────</span>
+<span class="fn">importScripts</span>(<span class="str">'https://cdn.jsdelivr.net/npm/@tensorflow/tfjs'</span>);
+<span class="fn">importScripts</span>(<span class="str">'essentia.js-model.umd.js'</span>);
+
+<span class="cmt">// Load arousal/valence regression model (DEAM trained on VGGish)</span>
+<span class="kw">const</span> <span class="vr">AROUSAL_VALENCE_MODEL</span> = <span class="str">'/models/deam-audioset-vggish-2/model.json'</span>;
+<span class="kw">const</span> <span class="vr">MOOD_MODEL</span> = <span class="str">'/models/mtg-jamendo-moodtheme-discogs-effnet-1/model.json'</span>;
+
+<span class="kw">let</span> <span class="vr">avModel</span>, <span class="vr">moodModel</span>;
+
+<span class="fn">Promise.all</span>([
+  tf.loadGraphModel(AROUSAL_VALENCE_MODEL),
+  tf.loadGraphModel(MOOD_MODEL)
+]).<span class="fn">then</span>(([av, mood]) => {
+  avModel = av; moodModel = mood;
+  <span class="vr">self</span>.<span class="fn">postMessage</span>({ type: <span class="str">'ready'</span> });
+});
+
+<span class="kw">const</span> <span class="vr">MOOD_TAGS</span> = [<span class="str">'aggressive'</span>, <span class="str">'calm'</span>, <span class="str">'energetic'</span>, <span class="str">'happy'</span>, <span class="str">'melancholic'</span>, <span class="str">'relaxing'</span>, <span class="str">'uplifting'</span>]; <span class="cmt">// subset</span>
+
+<span class="vr">self</span>.onmessage = <span class="kw">async</span> (e) => {
+  <span class="kw">if</span> (e.data.type !== <span class="str">'infer'</span>) <span class="kw">return</span>;
+  <span class="kw">const</span> <span class="vr">emb</span> = e.data.embeddings;
+
+  <span class="cmt">// Arousal/Valence: outputs [arousal, valence] in range 1–9</span>
+  <span class="kw">const</span> <span class="vr">avTensor</span> = tf.<span class="fn">tensor</span>(emb.features).<span class="fn">expandDims</span>(<span class="nm">0</span>);
+  <span class="kw">const</span> <span class="vr">avPred</span> = avModel.<span class="fn">predict</span>(avTensor);
+  <span class="kw">const</span> [<span class="vr">rawA</span>, <span class="vr">rawV</span>] = <span class="kw">await</span> avPred.<span class="fn">data</span>();
+  <span class="kw">const</span> <span class="vr">arousal</span> = (<span class="vr">rawA</span> - <span class="nm">1</span>) / <span class="nm">8</span>; <span class="cmt">// normalize 1–9 → 0–1</span>
+  <span class="kw">const</span> <span class="vr">valence</span> = (<span class="vr">rawV</span> - <span class="nm">1</span>) / <span class="nm">8</span>;
+  avTensor.<span class="fn">dispose</span>(); avPred.<span class="fn">dispose</span>();
+
+  <span class="cmt">// Mood tags</span>
+  <span class="kw">const</span> <span class="vr">moodTensor</span> = tf.<span class="fn">tensor</span>(emb.features).<span class="fn">expandDims</span>(<span class="nm">0</span>);
+  <span class="kw">const</span> <span class="vr">moodPred</span> = moodModel.<span class="fn">predict</span>(moodTensor);
+  <span class="kw">const</span> <span class="vr">moodData</span> = <span class="kw">await</span> moodPred.<span class="fn">data</span>();
+  moodTensor.<span class="fn">dispose</span>(); moodPred.<span class="fn">dispose</span>();
+
+  <span class="vr">self</span>.<span class="fn">postMessage</span>({ type: <span class="str">'predictions'</span>, arousal, valence, moods: <span class="fn">Array.from</span>(moodData) });
+};<span class="lang-tag">affect_inferencer.js</span></pre>
+</section>
+
+<div class="divider"></div>
+
+<!-- GOTCHAS -->
+<section id="gotchas">
+  <p class="section-label">10 — Gotchas & Limitations</p>
+  <h2>What Will Bite You</h2>
+
+  <div class="grid-2">
+    <div class="callout warn">
+      <span class="callout-icon">💣</span>
+      <div class="callout-body">
+        <h4>Memory Leak — .delete() Everything</h4>
+        <p>Every WASM Vector/Array returned by an algorithm must be manually freed with <code>.delete()</code>. JS garbage collection doesn't touch WASM heap. Forgetting even one per frame will crash the tab within minutes. Use try/finally. Always.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">🐌</span>
+      <div class="callout-body">
+        <h4>BPM Needs 10+ Seconds</h4>
+        <p>RhythmExtractor2013 needs at minimum 10s of audio for reliable BPM. For 30s previews: extract from the 10–25s window (middle section = most representative). Don't run on the first 5 seconds of a track.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">🔒</span>
+      <div class="callout-body">
+        <h4>CORS — Cannot Analyze External Audio URLs</h4>
+        <p>Essentia.js decodes audio via <code>AudioContext.decodeAudioData</code>. Fetching audio from Spotify CDN or any external URL will fail with CORS unless the server sends proper headers. Workaround: use Spotify Web Playback SDK (which handles its own auth) and capture via AudioWorklet — but that only works if SDK exposes audio node, which it doesn't. Solution: analyze from pre-loaded buffer only.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">📄</span>
+      <div class="callout-body">
+        <h4>AGPLv3 License — Read This</h4>
+        <p>AGPLv3 is copyleft. If you use Essentia.js in a web service (Mission Alive = SaaS), you must open-source your code or obtain a commercial license. UPF offers commercial licenses — contact mtg.upf.edu. Do this before launch.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">🔊</span>
+      <div class="callout-body">
+        <h4>No Stereo Width Algorithm</h4>
+        <p><code>spatial_width</code> param in Mission Alive can't come from Essentia.js — there is no stereo analysis in the current WASM build (it only handles mono). Apply spatial_width via Tone.js StereoWidener post-processing, as it already does.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">🎯</span>
+      <div class="callout-body">
+        <h4>Valence Accuracy Is Lower Than Arousal</h4>
+        <p>All MER (Music Emotion Recognition) research confirms: arousal prediction (R²~0.7) is significantly more accurate than valence (R²~0.4). Valence is culturally contingent. Use Essentia arousal predictions with higher confidence than valence. Cross-validate valence with HRV-derived affect_valence.</p>
+      </div>
+    </div>
+    <div class="callout warn">
+      <span class="callout-icon">⚡</span>
+      <div class="callout-body">
+        <h4>WASM Bundle Size ~12MB</h4>
+        <p>The essentia-wasm file is ~12MB. Load it asynchronously in a Worker (not main bundle). Use dynamic import inside the worker. Don't block session start on WASM load — initialize in background while user is on the session setup screen.</p>
+      </div>
+    </div>
+    <div class="callout tip">
+      <span class="callout-icon">✅</span>
+      <div class="callout-body">
+        <h4>Vite: Disable Optimization for WASM</h4>
+        <p>Add <code>optimizeDeps: { exclude: ['essentia.js'] }</code> to vite.config.js. Vite's dep optimizer breaks WASM dynamic loading. Also requires COOP/COEP headers for SharedArrayBuffer if using AudioWorklet.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+<div class="divider"></div>
+
+<!-- IMPLEMENTATION ORDER -->
+<section>
+  <p class="section-label">11 — Build Order</p>
+  <h2>What to Build First, Second, Third</h2>
+
+  <div class="steps">
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Step 1 — Offline Track Analyzer (1 week)</h3>
+        <p>Build <code>track_analyzer.worker.js</code> as standalone. Test on 10 tracks manually. Verify BPM accuracy vs Spotify's (±3 BPM = pass). Verify key/mode accuracy. This is the Spotify audio-features replacement. No UI needed yet.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Step 2 — Track Validator for Curated Playlists (3 days)</h3>
+        <p>Pre-analyze the 9 curated ISO playlists. Store features in <code>public/playlist-features.json</code>. Ship this file with the app. Zero runtime analysis needed for curated content. Use worker only for user's own library.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Step 3 — Loudness Normalization (2 days)</h3>
+        <p>Wire <code>LoudnessEBUR128</code> into session_audio.js. Before any external track mixes with stems, compute its LUFS. Apply GainNode correction to hit −16 LUFS target. This prevents jarring volume jumps when Spotify track changes.</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Step 4 — ML Mood Models (2 weeks)</h3>
+        <p>Download DEAM + emomusic models from essentia.upf.edu/models. Host in <code>public/models/</code>. Build affect_inferencer.js. Test: analyze a known "sad" track, verify valence &lt; 0.4. Analyze a known "energetic" track, verify arousal &gt; 0.7. Then wire into ISO bridge as secondary affect source (30% weight).</p>
+      </div>
+    </div>
+    <div class="step">
+      <div class="step-num"></div>
+      <div class="step-content">
+        <h3>Step 5 — Real-Time BPM Tracking (1 week)</h3>
+        <p>Build essentia-worklet.js. Connect to Tone.js master output via AnalyserNode tap. Track live BPM of whatever is playing (stems or Spotify). Use to verify ISO bridge is working: binaural tempo should track towards target BPM over session arc.</p>
+      </div>
+    </div>
+  </div>
+</section>
+
+</div><!-- /page -->
+
+<footer>
+  <p>Essentia.js Deep Dive — Mission Alive Developer Reference · May 2026</p>
+  <p style="margin-top:0.5rem">
+    Sources:
+    <a href="https://mtg.github.io/essentia.js/">Essentia.js Docs</a> ·
+    <a href="https://essentia.upf.edu/models.html">Essentia Models</a> ·
+    <a href="https://transactions.ismir.net/articles/10.5334/tismir.111">TISMIR Paper</a> ·
+    <a href="https://github.com/MTG/essentia.js">GitHub MTG/essentia.js</a> ·
+    <a href="https://essentia.upf.edu/streaming_extractor_music.html">Music Extractor Reference</a>
+  </p>
+</footer>
+
+<script>
+// Scroll progress
+window.addEventListener('scroll', () => {
+  const total = document.documentElement.scrollHeight - window.innerHeight;
+  document.getElementById('scrollBar').style.width = (window.scrollY / total * 100) + '%';
+});
+
+// Algorithm tabs
+function switchAlgo(e, id) {
+  document.querySelectorAll('[id^="algo-tabs"] .tab-btn').forEach(b => b.classList.remove('active'));
+  document.querySelectorAll('[id^="algo-"]').forEach(p => { if(p.id !== 'algo-tabs') p.classList.remove('active'); });
+  e.target.classList.add('active');
+  document.getElementById('algo-' + id).classList.add('active');
+}
+</script>
+</body>
+</html>
