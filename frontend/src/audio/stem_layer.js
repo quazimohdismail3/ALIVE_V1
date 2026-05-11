@@ -17,10 +17,12 @@ export class StemLayer {
       this._player = new Tone.Player({
         url:    audioBuffer,
         loop:   true,
-        fadeIn: 2.0,
-        fadeOut: 2.0,
+        fadeIn: 0.5,
+        fadeOut: 0.5,
       }).connect(this._volNode);
-      await Tone.loaded();
+      // Buffer is pre-decoded — no network load needed. Don't call Tone.loaded() here:
+      // it waits for ALL in-flight ToneAudioBuffer downloads (including the Convolver IR),
+      // and if any reject it throws, silently blocking every stem.
       this._loaded = true;
     } catch (_) {
       this._player = null;

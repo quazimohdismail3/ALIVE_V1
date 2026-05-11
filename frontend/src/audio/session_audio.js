@@ -203,7 +203,7 @@ export class SessionAudio {
     try {
       await stemLoader.init();
       const res = await fetch('/stems/stems.json');
-      if (!res.ok) return;
+      if (!res.ok) throw new Error(`stems.json ${res.status}`);
       const manifest = await res.json();
 
       const loads = [
