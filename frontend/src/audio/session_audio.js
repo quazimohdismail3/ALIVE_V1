@@ -29,15 +29,16 @@ const BINAURAL_GLIDE_MS = 45000;
 
 // State confirmation gate: ANS must hold direction before α adapts
 const CONFIRM_MS_STRESS = 8000;   // 8s for sympathetic direction
-const CONFIRM_MS_CALM   = 25000;  // 25s for parasympathetic direction
+const CONFIRM_MS_CALM   = 90000;  // 90s for parasympathetic direction (Lehrer & Gevirtz 2014 HRVB minimum ~2-3 min; 90s conservative interim)
 
 // If harmonic stem not loaded within this window → activate chord engine as quiet fallback
 const CHORD_FALLBACK_MS = 20000;
 
 export class SessionAudio {
-  constructor(sessionType) {
-    this.sessionType  = sessionType;
-    this._sessionCfg  = SESSIONS[sessionType] ?? SESSIONS.find_your_calm;
+  constructor(sessionType, { binauralEnabled = true } = {}) {
+    this.sessionType      = sessionType;
+    this._sessionCfg      = SESSIONS[sessionType] ?? SESSIONS.find_your_calm;
+    this._binauralEnabled = binauralEnabled;
 
     // Core oscillator layers (always active, start silent)
     this.binaural = new BinauralGenerator();
@@ -83,6 +84,13 @@ export class SessionAudio {
 
     // Fallback timer — activates chord engine if harmonic stem doesn't load
     this._chordFallbackTimer = null;
+
+    // Base volume registry — source of truth for all stem target volumes (linear 0-1)
+    // Prevents OrganicVariation LFO from reading mid-ramp values as base
+    this._baseVolumes = {};
+
+    // Biometric gate: cumulative seconds of sustained coherence >= 0.5
+    this._coherentSeconds = 0;
   }
 
   async start(rfBpm = 6) {
@@ -92,7 +100,7 @@ export class SessionAudio {
     this._circadian      = this._getCircadianContext();
 
     // Binaural starts at −50 dB (subliminal) — no further ramp needed
-    this.binaural.start();
+    if (this._binauralEnabled) this.binaural.start();
 
     // Breath guide starts at −60 dB (silent), ramps when phase applies it
     this.breath.start(rfBpm);
@@ -146,6 +154,13 @@ export class SessionAudio {
     const valence = affect?.valence ?? params.valence ?? null;
     if (arousal !== null) this._ansState.arousal = arousal;
     if (valence !== null) this._ansState.valence = valence;
+
+    // Biometric gate: track cumulative coherent seconds (update cadence = ~1s)
+    const coherenceVal = params.coherence ?? params.vs_score ?? null;
+    if (coherenceVal !== null) {
+      if (coherenceVal >= 0.5) this._coherentSeconds += 1;
+      else                      this._coherentSeconds  = 0;
+    }
 
     // Binaural: bridge-blended beat, 45s glide
     const beatHz    = params.binaural_beat_hz ?? null;
@@ -237,13 +252,18 @@ export class SessionAudio {
         if (this._currentPhase) this._applyStemPhaseVolumes(this._currentPhase);
 
         // Start organic variation after stems are running
-        this._organic.start({
-          ground:   this._stems.ground.volNode,
-          breath_s: this._stems.breath_s.volNode,
-          harmonic: this._stems.harmonic.volNode,
-          spatial:  this._stems.spatial.volNode,
-          morning:  this._stems.morning.volNode,
-        });
+        this._organic.start(
+          {
+            ground:   this._stems.ground.volNode,
+            breath_s: this._stems.breath_s.volNode,
+            harmonic: this._stems.harmonic.volNode,
+            spatial:  this._stems.spatial.volNode,
+            morning:  this._stems.morning.volNode,
+          },
+          null, // spatialPanner — not wired yet
+          // onVolumeChange callback: routes OrganicVariation rampTo through _baseVolumes registry
+          (layer, targetLinear, rampMs) => this._setLayerVolume(layer, targetLinear, rampMs)
+        );
       }
     } catch (_) {
       // Network/parse error — chord fallback will activate via timer below
@@ -309,20 +329,20 @@ export class SessionAudio {
 
     // Ground drone (dungeon_drone_cc0.ogg) — muted. Semantically wrong for HRV therapy.
     // ChordEngine handles tonal ground layer if stems fail (via activateFallback).
-    this._stems.ground.setVolume(0.001, 4000);
+    this._setLayerVolume('ground', 0.001, 4000);
 
     // Breath/nature texture (birds_wind) — prominent natural layer
     // Research (Annerstedt 2013, Miyazaki 2014): nature sounds are the active vagal ingredient.
-    this._stems.breath_s.setVolume(cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.15, 3000);
+    this._setLayerVolume('breath_s', cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.15, 3000);
 
     // Harmonic pad (ether_vox) — support layer, below spatial
-    this._stems.harmonic.setVolume(calm * 0.42, 3000);
+    this._setLayerVolume('harmonic', calm * 0.42, 3000);
 
     // Spatial / forest — dominant natural layer (highest volume)
-    this._stems.spatial.setVolume(isMorning ? 0.001 : calm * 0.58, 4000);
+    this._setLayerVolume('spatial', isMorning ? 0.001 : calm * 0.58, 4000);
 
     const morningPhases = ['ACTIVATE', 'ENERGIZE', 'PRIME'];
-    this._stems.morning.setVolume(
+    this._setLayerVolume('morning',
       isMorning && morningPhases.includes(phase) ? 0.35 : 0.001,
       3000
     );
@@ -334,8 +354,20 @@ export class SessionAudio {
     const presence = Math.max(0, Math.min(1, params.voice_range_presence ?? 0.4));
     if (this._stems.harmonic.isLoaded) {
       // Harmonic pad responds to presence, but stays as support layer
-      this._stems.harmonic.setVolume(presence * 0.45, 2000);
+      this._setLayerVolume('harmonic', presence * 0.45, 2000);
     }
+  }
+
+  // Centralised stem volume setter — all stem volume changes MUST go through here.
+  // Stores the target in _baseVolumes so OrganicVariation reads a stable base,
+  // not a mid-ramp value (fixes concurrent rampTo race per Web Audio spec).
+  _setLayerVolume(layer, targetLinear, rampMs) {
+    const stem = this._stems[layer];
+    if (!stem) return;
+    this._baseVolumes[layer] = targetLinear;
+    stem.setVolume(targetLinear, rampMs);
+    // Keep OrganicVariation's dB base registry in sync so LFO ticks read the correct base
+    this._organic.notifyBaseVolume(layer, targetLinear);
   }
 
   // ── Phase 1B additions (arc, circadian) ────────────────────────────────────
@@ -350,8 +382,16 @@ export class SessionAudio {
   _updateArc() {
     if (!this._sessionStartMs) return;
     const elapsedMin = (Date.now() - this._sessionStartMs) / 60000;
-    if      (elapsedMin < 8)  this._arcPhase = 'ENTRAIN';
-    else if (elapsedMin < 20) this._arcPhase = 'SHIFT';
-    else                      this._arcPhase = 'INTEGRATE';
+
+    if (this._arcPhase === 'ENTRAIN') {
+      // Biometric gate: require 60s sustained coherence >= 0.5 after 8 min
+      // Hard fallback at 12 min regardless of coherence (timer-only sessions / no coherence data)
+      const bioGate  = elapsedMin >= 8 && this._coherentSeconds >= 60;
+      const hardFall = elapsedMin >= 12;
+      if (bioGate || hardFall) this._arcPhase = 'SHIFT';
+    } else if (this._arcPhase === 'SHIFT') {
+      if (elapsedMin >= 20) this._arcPhase = 'INTEGRATE';
+    }
+    // INTEGRATE is terminal — no transition out
   }
 }

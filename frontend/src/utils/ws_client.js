@@ -2,6 +2,8 @@
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000'
 const WS_URL = API_URL.replace('https://', 'wss://').replace('http://', 'ws://')
 
+let _seq = 0
+
 export class WSClient {
   constructor(session, mode, authToken, onMessage, { timezone, noReconnect, durationS, rfBpm } = {}) {
     this.session = session
@@ -25,6 +27,7 @@ export class WSClient {
     this.ws = new WebSocket(url)
 
     this.ws.onopen = () => {
+      _seq = 0
       this._reconnectDelay = 1000
       try {
         this.ws.send(JSON.stringify({ type: 'auth', token: this.authToken, timezone: this.timezone }))
@@ -54,7 +57,12 @@ export class WSClient {
   send(data) {
     if (this.ws?.readyState === WebSocket.OPEN) {
       try {
-        this.ws.send(JSON.stringify(data))
+        // Attach monotonic sequence number to every outgoing frame so the backend
+        // can detect and discard stale frames that drain from a network buffer.
+        const frame = (data.rr !== undefined || data.resp_amp !== undefined)
+          ? { ...data, seq: ++_seq }
+          : data
+        this.ws.send(JSON.stringify(frame))
       } catch (err) {
         console.error('[WSClient] send failed:', err)
         this._wsState = 'error'

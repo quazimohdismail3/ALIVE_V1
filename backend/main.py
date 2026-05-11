@@ -653,6 +653,7 @@ async def ws_session(
                             "ls_regulation": ls.regulation,
                             "ls_engagement": ls.engagement,
                         },
+                        music_params=best_params,
                     )
                 except Exception:
                     pass  # DB failure must not kill the session loop

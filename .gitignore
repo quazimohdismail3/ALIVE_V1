@@ -89,3 +89,5 @@ frontend/e2e/.auth/
 .mcp.json
 .code_review_diff.txt
 .gstack/
+
+.vercel

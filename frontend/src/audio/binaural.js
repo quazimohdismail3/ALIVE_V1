@@ -33,8 +33,8 @@ export class BinauralGenerator {
         if (beatHz <= 0) { this.setVolume(0, rampMs); return; }
         const rampS = Math.max(rampMs, 2000) / 1000;
         // INVARIANT: left < right ALWAYS
-        const leftFreq = carrierHz;
-        const rightFreq = carrierHz + Math.abs(beatHz);  // abs ensures right > left
+        const leftFreq = carrierHz - Math.abs(beatHz) / 2;
+        const rightFreq = carrierHz + Math.abs(beatHz) / 2;  // symmetric split keeps perceived pitch at carrier
         this._leftOsc.frequency.rampTo(leftFreq, rampS);
         this._rightOsc.frequency.rampTo(rightFreq, rampS);
         this._carrier = carrierHz;

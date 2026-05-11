@@ -1,4 +1,5 @@
 from __future__ import annotations
+import json
 import os
 import uuid
 from datetime import datetime, timezone
@@ -52,6 +53,7 @@ async def write_snapshot(
     user_id: str,
     epoch_s: int,
     metrics: dict,
+    music_params: Optional[dict] = None,
 ) -> None:
     async with _pool.acquire() as conn:
         await conn.execute(
@@ -60,9 +62,10 @@ async def write_snapshot(
               (session_id, user_id, ts, epoch_s,
                rmssd, sdnn, lf_hf, dfa_a1, svi, poincare_sd1, poincare_sd2,
                vs_score, ans_state, arc_phase, rf_coherence, rf_locked,
-               ls_arousal, ls_valence, ls_regulation, ls_engagement)
+               ls_arousal, ls_valence, ls_regulation, ls_engagement,
+               music_params)
             values
-              ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20)
+              ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21)
             """,
             session_id, user_id, datetime.now(timezone.utc), epoch_s,
             metrics.get("rmssd"), metrics.get("sdnn"), metrics.get("lf_hf"),
@@ -73,6 +76,7 @@ async def write_snapshot(
             metrics.get("rf_locked"),
             metrics.get("ls_arousal"), metrics.get("ls_valence"),
             metrics.get("ls_regulation"), metrics.get("ls_engagement"),
+            json.dumps(music_params) if music_params is not None else None,
         )
 
 

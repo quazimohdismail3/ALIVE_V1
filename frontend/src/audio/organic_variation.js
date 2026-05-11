@@ -13,26 +13,33 @@ function pickPeriod() {
 
 export class OrganicVariation {
   constructor() {
-    this._volNodes     = {};   // { layerName: Tone.Volume }
-    this._lfos         = {};   // { layerName: Tone.LFO }
-    this._lfoGains     = {};   // { layerName: Tone.Gain } — LFO → volume modulation
-    this._panner       = null; // Tone.Panner for spatial layer HRTF rotation
-    this._pannerLFO    = null;
-    this._silenceTimer = null;
+    this._volNodes      = {};   // { layerName: Tone.Volume }
+    this._lfos          = {};   // { layerName: Tone.LFO }
+    this._lfoGains      = {};   // { layerName: Tone.Gain } — LFO → volume modulation
+    this._panner        = null; // Tone.Panner for spatial layer HRTF rotation
+    this._pannerLFO     = null;
+    this._silenceTimer  = null;
     this._silenceActive = false;
-    this._lastSwapMs   = 0;
-    this._savedVolumes = {}; // saved dB levels before silence
-    this._started      = false;
-    this._disposed     = false;
+    this._lastSwapMs    = 0;
+    this._savedVolumes  = {}; // saved dB levels before silence
+    this._started       = false;
+    this._disposed      = false;
+    // Callback set by session_audio so volume changes route through _baseVolumes registry.
+    // Signature: (layer: string, targetLinear: number, rampMs: number) => void
+    this._onVolumeChange = null;
   }
 
   // Call after session start. volNodes: { ground, breath_s, harmonic, spatial, morning }
   // Each value is a Tone.Volume node already connected in the session audio graph.
   // spatialPanner: optional Tone.Panner node on the spatial layer for HRTF rotation.
-  start(volNodes = {}, spatialPanner = null) {
+  // onVolumeChange: optional callback (layer, targetLinear, rampMs) => void
+  //   When provided, LFO volume adjustments are routed through it instead of calling
+  //   rampTo directly — prevents concurrent rampTo race condition (Web Audio spec).
+  start(volNodes = {}, spatialPanner = null, onVolumeChange = null) {
     if (this._started || this._disposed) return;
-    this._volNodes = volNodes;
-    this._started  = true;
+    this._volNodes       = volNodes;
+    this._onVolumeChange = onVolumeChange;
+    this._started        = true;
 
     // Start EQ LFO per layer (implemented as slow gain modulation ±1.5 dB)
     Object.entries(volNodes).forEach(([layer, volNode]) => {
@@ -96,6 +103,14 @@ export class OrganicVariation {
     this._panner   = null;
   }
 
+  // Called by session_audio._setLayerVolume() to keep _savedVolumes in sync.
+  // Prevents _applyLFOs from reading a mid-ramp value as the base dB.
+  notifyBaseVolume(layer, linearVol) {
+    try {
+      this._savedVolumes[layer] = Tone.gainToDb(Math.max(0.0001, linearVol));
+    } catch (_) {}
+  }
+
   // Called from session_audio when spatial_width param updates (0–1)
   setSpatialWidth(width) {
     if (!this._pannerLFO) return;
@@ -129,10 +144,18 @@ export class OrganicVariation {
       try {
         // Read LFO value and add as small dB offset (±1.5 dB imperceptible micro-shift)
         const lfoVal = lfo.value; // -1.5 to +1.5
-        // We don't override the session's volume — just apply a very small perturbation
-        // via rampTo of a tiny delta. We track the base volume in _savedVolumes.
-        const base = this._savedVolumes[layer] ?? volNode.volume.value;
-        volNode.volume.rampTo(base + lfoVal * 0.5, 3); // 3s ramp, max ±0.75 dB net
+        // _savedVolumes is kept in sync by notifyBaseVolume() called from session_audio's
+        // _setLayerVolume — so base is always the session's intended target dB, not a
+        // mid-ramp live value (fixes concurrent rampTo race, Web Audio spec §4.3).
+        const base   = this._savedVolumes[layer] ?? volNode.volume.value;
+        const targetDb = base + lfoVal * 0.5; // max ±0.75 dB net
+        if (this._onVolumeChange) {
+          // Route through session_audio's registry so _baseVolumes stays in sync
+          const targetLinear = Tone.dbToGain(targetDb);
+          this._onVolumeChange(layer, targetLinear, 3000); // 3s ramp
+        } else {
+          volNode.volume.rampTo(targetDb, 3);
+        }
       } catch (_) {}
     });
 
@@ -190,8 +213,14 @@ export class OrganicVariation {
     // Fade back in over 4 seconds
     Object.entries(this._volNodes).forEach(([layer, volNode]) => {
       if (!volNode) return;
-      const target = this._savedVolumes[layer] ?? -20;
-      try { volNode.volume.rampTo(target, 4); } catch (_) {}
+      const targetDb = this._savedVolumes[layer] ?? -20;
+      try {
+        if (this._onVolumeChange) {
+          this._onVolumeChange(layer, Tone.dbToGain(targetDb), 4000);
+        } else {
+          volNode.volume.rampTo(targetDb, 4);
+        }
+      } catch (_) {}
     });
 
     await new Promise(r => setTimeout(r, 4500)); // wait for fade-back to complete

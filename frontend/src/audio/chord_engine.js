@@ -39,7 +39,7 @@ export class ChordEngine {
     this._keyMode  = Math.min(1, Math.max(0, Math.round(keyMode)));
 
     // IR convolver — warmer than algorithmic reverb when chord does activate
-    this._reverb = new Tone.Convolver('/ir/stone_chamber.wav');
+    this._reverb = new Tone.Convolver('/ir/forest.wav');
     this._reverb.wet.value = 0.28;
 
     // Start completely silent — chord is a fallback, not primary sound
