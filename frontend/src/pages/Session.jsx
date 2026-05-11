@@ -85,6 +85,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const timerRef    = useRef(null);
   const sendIvRef   = useRef(null);
   const startTimeRef = useRef(null);
+  const lastFlashRef = useRef(0);
 
   // Apply ANS state + VS period to root for CSS cascade
   useEffect(() => {
@@ -264,15 +265,18 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
   const rfHz           = frame?.rf_hz ?? null;
   const rfCalibratedHz = frame?.rf_calibrated_hz ?? 0.1;
-  const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.008;
+  const inResonance    = rfHz !== null && Math.abs(rfHz - rfCalibratedHz) < 0.02;
 
   // ANS color for inline styles (mirrors --ambient CSS variable)
   const ansColor = ANS_COLORS[frame?.ans?.state] ?? '#7C6FF7';
   const ansLabel = ANS_LABELS[frame?.ans?.state] ?? 'Calibrating';
 
-  // Fire one-shot flash when breathing locks to RF resonance
+  // Fire one-shot flash when breathing locks to RF resonance (5 s cooldown between flashes)
   useEffect(() => {
     if (!inResonance) return;
+    const now = Date.now();
+    if (now - lastFlashRef.current < 5000) return;
+    lastFlashRef.current = now;
     setJustLocked(true);
     const t = setTimeout(() => setJustLocked(false), 1000);
     return () => clearTimeout(t);
@@ -347,7 +351,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         }}>
           {inResonance
             ? 'RESONANCE'
-            : rfHz ? `↓ ${Math.abs((rfHz - rfCalibratedHz) * 60).toFixed(1)} off` : ''}
+            : rfHz ? `${rfHz < rfCalibratedHz ? '↓' : '↑'} ${Math.abs((rfHz - rfCalibratedHz) * 60).toFixed(1)} off` : ''}
         </div>
 
         {/* Live orb — measured breathing rate */}
