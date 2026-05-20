@@ -10,3 +10,13 @@ if (!supabaseUrl || !supabaseAnonKey) {
 export const supabase = supabaseUrl
   ? createClient(supabaseUrl, supabaseAnonKey)
   : null
+
+export async function getAuthToken() {
+  if (!supabase) return 'dev'
+  try {
+    const { data: { session } } = await supabase.auth.getSession()
+    return session?.access_token ?? 'dev'
+  } catch (_) {
+    return 'dev'
+  }
+}

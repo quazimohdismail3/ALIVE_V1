@@ -86,7 +86,7 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
   const { latestRR, latestHR, bleStatus: bleStatusCtx } = useSensorContext()
   const bleStatus = bleStatusProp ?? bleStatusCtx
 
-  const SESSION_LIST = getSessionList()
+  const SESSION_LIST = useMemo(() => getSessionList(), [])
   const DEFAULT_SESSION_ID = SESSION_LIST[0].id
   const DEFAULT_DURATION_S  = SESSION_LIST[0].durations[0].value
 

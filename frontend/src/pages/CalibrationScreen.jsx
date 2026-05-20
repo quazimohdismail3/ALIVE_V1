@@ -1,7 +1,7 @@
 // frontend/src/pages/CalibrationScreen.jsx
 import { useEffect, useRef, useState, useCallback } from 'react'
 import { WSClient } from '../utils/ws_client.js'
-import { supabase } from '../lib/supabase.js'
+import { supabase, getAuthToken } from '../lib/supabase.js'
 import { SensorFusion } from '../sensors/sensor_fusion.js'
 import { patchProfileCalibration } from '../lib/api.js'
 import { useSensorContext } from '../context/SensorContext.jsx'
@@ -60,13 +60,7 @@ export default function CalibrationScreen({ onReady }) {
     setPhase('calibrating')
     await acquireWakeLock().catch(() => {})
 
-    let authToken = 'dev'
-    if (supabase) {
-      try {
-        const { data: { session: supa } } = await supabase.auth.getSession()
-        if (supa?.access_token) authToken = supa.access_token
-      } catch (_) {}
-    }
+    const authToken = await getAuthToken()
 
     const fusion = new SensorFusion(2, { externalBle: bleRef.current })
     fusionRef.current = fusion

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react'
+import React, { useState, useEffect, useCallback } from 'react'
 import './styles/global.css'
 import { AuthProvider, useAuth } from './context/AuthContext.jsx'
 import { SensorProvider, useSensorContext } from './context/SensorContext.jsx'
@@ -11,6 +11,32 @@ import Dashboard from './pages/Dashboard.jsx'
 import Session from './pages/Session.jsx'
 import Insight from './pages/Insight.jsx'
 import { getProfile } from './lib/api.js'
+
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props)
+    this.state = { hasError: false, error: null }
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error }
+  }
+  componentDidCatch(error, info) {
+    console.error('App error:', error, info)
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', minHeight: '100dvh', background: '#0A0A0F', color: '#E8E8F0', gap: 12 }}>
+          <div style={{ fontSize: 16, fontWeight: 600 }}>Something went wrong</div>
+          <button onClick={() => this.setState({ hasError: false, error: null })} style={{ background: 'rgba(124,111,247,0.15)', border: '1px solid rgba(124,111,247,0.3)', color: '#7C6FF7', borderRadius: 8, padding: '8px 16px', fontSize: 13, cursor: 'pointer' }}>
+            Try again
+          </button>
+        </div>
+      )
+    }
+    return this.props.children
+  }
+}
 
 function AppRoutes() {
   const { user, loading } = useAuth()
@@ -126,10 +152,12 @@ function AppRoutes() {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <SensorProvider>
-        <AppRoutes />
-      </SensorProvider>
-    </AuthProvider>
+    <ErrorBoundary>
+      <AuthProvider>
+        <SensorProvider>
+          <AppRoutes />
+        </SensorProvider>
+      </AuthProvider>
+    </ErrorBoundary>
   )
 }

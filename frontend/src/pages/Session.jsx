@@ -1,6 +1,6 @@
 ﻿import { useEffect, useRef, useState, useCallback } from 'react';
 import { WSClient } from '../utils/ws_client.js';
-import { supabase } from '../lib/supabase.js';
+import { supabase, getAuthToken } from '../lib/supabase.js';
 import { SessionAudio } from '../audio/session_audio.js';
 import { useWakeLock } from '../hooks/useWakeLock.js';
 import { useSessionAccum } from '../hooks/useSessionAccum.js';
@@ -31,7 +31,7 @@ async function postSessionEnd(summary) {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
-        session_id: `session-${Date.now()}`,
+        session_id: crypto.randomUUID(),
         session_type: summary.session_type,
         mode: summary.mode,
         peak_vs: summary.peak_vs,
@@ -42,7 +42,7 @@ async function postSessionEnd(summary) {
         circadian_fit_score: 0.5,
       }),
     });
-  } catch (_) {}
+  } catch (err) { console.error('postSessionEnd failed:', err) }
 }
 
 const ANS_COLORS = {
@@ -129,11 +129,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
     async function startSession() {
       // Get Supabase JWT
-      let authToken = 'dev';
-      if (supabase) {
-        const { data: { session: supa } } = await supabase.auth.getSession();
-        if (supa?.access_token) authToken = supa.access_token;
-      }
+      const authToken = await getAuthToken();
 
       if (cancelled) return;
 
