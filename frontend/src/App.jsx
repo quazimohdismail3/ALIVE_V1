@@ -7,6 +7,7 @@ import LandingPage from './pages/LandingPage.jsx'
 import LoginScreen from './pages/LoginScreen.jsx'
 import ProfileSetup from './pages/ProfileSetup.jsx'
 import CalibrationScreen from './pages/CalibrationScreen.jsx'
+import H10Intro from './pages/H10Intro.jsx'
 import Dashboard from './pages/Dashboard.jsx'
 import Session from './pages/Session.jsx'
 import Insight from './pages/Insight.jsx'
@@ -74,7 +75,7 @@ function AppRoutes() {
     if (profile === undefined && !profileErr) return
     if (profileErr) { setScreen('login'); return }
     if (profile === null) { setScreen('profile-setup'); return }
-    setScreen('calibration')
+    setScreen(h10IntroSeen() ? 'calibration' : 'h10-intro')
   }, [profile, profileErr, screen])
 
   // When auth state changes after splash, re-route
@@ -83,6 +84,10 @@ function AppRoutes() {
     if (!user && screen !== 'login') setScreen('login')
     if (user && screen === 'login') setScreen('profile-loading')
   }, [user, screen])
+
+  const h10IntroSeen = () => {
+    try { return localStorage.getItem('h10_intro_seen') === '1' } catch (_) { return false }
+  }
 
   const handleCalibrationReady = useCallback((readyCfg) => {
     setCfg(readyCfg)
@@ -109,6 +114,17 @@ function AppRoutes() {
         onComplete={async () => {
           const p = await getProfile()
           setProfile(p)
+          setScreen(h10IntroSeen() ? 'calibration' : 'h10-intro')
+        }}
+      />
+    )
+  }
+
+  if (screen === 'h10-intro') {
+    return (
+      <H10Intro
+        onContinue={() => {
+          try { localStorage.setItem('h10_intro_seen', '1') } catch (_) {}
           setScreen('calibration')
         }}
       />
