@@ -307,8 +307,10 @@ export class SessionAudio {
           (layer, targetLinear, rampMs) => this._setLayerVolume(layer, targetLinear, rampMs)
         );
       }
-    } catch (_) {
-      // Network/parse error — chord fallback will activate via timer below
+    } catch (err) {
+      // Network/parse error — chord fallback will activate via timer below.
+      // Surface the error so silent stem-load failures are diagnosable.
+      console.error('[SessionAudio] stem load failed:', err);
     }
 
     // Fallback: if harmonic stem didn't load, activate chord engine after timeout

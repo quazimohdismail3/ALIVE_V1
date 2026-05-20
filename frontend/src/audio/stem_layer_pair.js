@@ -79,12 +79,16 @@ export class StemLayerPair {
     if (this._active.isLoaded && stemIdOpt) this._activeStemId = stemIdOpt;
   }
 
-  // Start active stem at full passthrough; bus is silent (caller fades in via setVolume).
+  // Start active stem at unity; ramp bus from -60dB to 0dB so audio is audible
+  // even before _applyStemPhaseVolumes fires (defensive — if phase config or
+  // _currentPhase is missing, bus would otherwise stay at -60dB forever).
+  // Subsequent pair.setVolume() calls override this default.
   start() {
     if (!this._active.isLoaded) return;
-    // Child stems run at unity — the bus is the session dimmer.
     this._active.setVolume(1.0, 200);
     this._active.start();
+    // Ramp bus from -60dB → 0dB over 3s so stems become audible.
+    try { this._busVol.volume.rampTo(0, 3); } catch (_) {}
     this._started = true;
   }
 

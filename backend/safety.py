@@ -35,6 +35,7 @@ SAFE_FALLBACK_PARAMS = {
     "warmth": 0.9,
     "spatial_width": 0.4,
     "soma_carrier_hz": 52.0,
+    "binaural_carrier_hz": 432.0,
     "binaural_beat_hz": 0.0,
     "breath_sync_ratio": 0.5,
     "micro_variation": 0.05,
