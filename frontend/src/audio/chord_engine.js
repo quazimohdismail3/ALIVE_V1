@@ -30,12 +30,14 @@ export class ChordEngine {
     this._volNode     = null;
     this._lpf         = null;
     this._chorus      = null;
-    this._started     = false;
-    this._active      = false; // stays false until activateFallback() is called
-    this._rootMidi    = hzToMidi(256);
-    this._keyMode     = 1;
-    this._tension     = 0.3;
-    this._evolveTimer = null;
+    this._started           = false;
+    this._active            = false; // stays false until activateFallback() is called
+    this._rootMidi          = hzToMidi(256);
+    this._keyMode           = 1;
+    this._tension           = 0.3;
+    this._chordComplexity   = 0.45; // 0..1 → 2–4 voices
+    this._rhythmicComplexity = 0.3;  // 0..1 → evolve timer 5–20s
+    this._evolveTimer       = null;
   }
 
   // Initialises the audio graph silently. Does NOT start playing.
@@ -65,10 +67,7 @@ export class ChordEngine {
     this._started = true;
     this._active  = false; // NOT active — waits for activateFallback()
 
-    // Phrase re-voicing every 10s per design spec (entrains 0.1 Hz breathing frequency)
-    this._evolveTimer = setInterval(() => {
-      if (this._active) this._evolveVoicing();
-    }, 10_000);
+    this._restartEvolveTimer(); // period derived from _rhythmicComplexity
   }
 
   // Called only when harmonic stem fails to load after timeout.
@@ -81,7 +80,7 @@ export class ChordEngine {
     this._volNode.volume.rampTo(-46, rampMs / 1000);
   }
 
-  setParams({ keyMode, rootHz, tension, presence, brightness, warmth, roughness } = {}) {
+  setParams({ keyMode, rootHz, tension, presence, brightness, warmth, roughness, chordComplexity, rhythmicComplexity } = {}) {
     if (!this._started || !this._active) return;
     let reVoice = false;
 
@@ -114,6 +113,15 @@ export class ChordEngine {
       // Roughness → slight detune on PolySynth voices
       const detune = Math.max(0, Math.min(1, roughness)) * 18; // 0–18 cents
       this._pad?.set({ detune });
+    }
+    if (chordComplexity !== undefined) {
+      const prev = this._chordComplexity;
+      this._chordComplexity = Math.max(0, Math.min(1, chordComplexity));
+      if (Math.round(prev * 2) !== Math.round(this._chordComplexity * 2)) reVoice = true;
+    }
+    if (rhythmicComplexity !== undefined) {
+      this._rhythmicComplexity = Math.max(0, Math.min(1, rhythmicComplexity));
+      this._restartEvolveTimer();
     }
     if (reVoice) this._voiceLead();
   }
@@ -154,10 +162,21 @@ export class ChordEngine {
 
   _buildNotes() {
     const intervals = SCALE_INTERVALS[this._keyMode];
-    const count     = this._tension > 0.55 ? 4 : 3;
+    const count     = Math.min(4, Math.max(2, Math.round(2 + this._chordComplexity * 2)));
     return intervals.slice(0, count).map((semitones, i) =>
       Tone.Frequency(this._rootMidi + semitones + VOICE_SPREADS[i], 'midi').toNote()
     );
+  }
+
+  // Restart evolve timer with period derived from rhythmic_complexity.
+  // High complexity → faster phrase evolution (5s), low → slow (20s).
+  _restartEvolveTimer() {
+    if (!this._started) return;
+    clearInterval(this._evolveTimer);
+    const periodMs = Math.round(Math.max(5000, 20000 - this._rhythmicComplexity * 15000));
+    this._evolveTimer = setInterval(() => {
+      if (this._active) this._evolveVoicing();
+    }, periodMs);
   }
 
   // Staggered attack for organ-like bloom — jitter per design spec

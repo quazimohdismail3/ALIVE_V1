@@ -147,7 +147,8 @@ export class SessionAudio {
   }
 
   // Called every 1Hz — wires backend music_params + ANS state
-  updateMusicParams(params, affect) {
+  // state: optional StateVector dict { arousal, valence, stability, coherence, recovery_rate, autonomic_balance, ... }
+  updateMusicParams(params, affect, state) {
     if (!this._started || !params) return;
     this._lastParams = params;
     this._updateArc();
@@ -180,20 +181,34 @@ export class SessionAudio {
       this.binaural.set(bridgeBeat, carrierHz, BINAURAL_GLIDE_MS);
     }
 
-    // Chord engine: full 7-param update (only has effect if chord is active as fallback)
+    // Chord engine: full 9-param update (only has effect if chord is active as fallback)
     this._chord.setParams({
-      keyMode:    params.key_mode,
-      rootHz:     params.soma_carrier_hz,
-      tension:    params.harmonic_tension,
-      presence:   params.voice_range_presence ?? 0.4,
-      brightness: params.brightness,
-      warmth:     params.warmth,
-      roughness:  params.roughness,
+      keyMode:            params.key_mode,
+      rootHz:             params.soma_carrier_hz,
+      tension:            params.harmonic_tension,
+      presence:           params.voice_range_presence ?? 0.4,
+      brightness:         params.brightness,
+      warmth:             params.warmth,
+      roughness:          params.roughness,
+      chordComplexity:    params.chord_complexity,
+      rhythmicComplexity: params.rhythmic_complexity,
     });
 
     // Organic variation: spatial width + micro-variation intensity (1Hz live update)
     if (params.spatial_width   !== undefined) this._organic.setSpatialWidth(params.spatial_width);
     if (params.micro_variation !== undefined) this._organic.setVariationIntensity(params.micro_variation);
+    if (params.silence_ratio   !== undefined) this._organic.setSilenceRatio(params.silence_ratio);
+
+    // Breath guide: sync ratio drives I:E balance (high = more exhale-dominant)
+    if (params.breath_sync_ratio !== undefined) this.breath.setIERatio(params.breath_sync_ratio);
+
+    // Stem rotation hold time: high beat_regularity = longer hold (more stable arc)
+    if (params.beat_regularity !== undefined) {
+      ['breath_s', 'harmonic', 'spatial'].forEach(layer => {
+        const stem = this._stems[layer];
+        if (stem && typeof stem.setHoldMs === 'function') stem.setHoldMs(params.beat_regularity);
+      });
+    }
 
     // BPM → Tone.Transport (8s ramp — slow enough to avoid perceptible tempo jumps)
     // Formula (backend): 55 + rmssd_norm×15 + arousal×8, capped 50-75 BPM therapeutic.
@@ -202,8 +217,8 @@ export class SessionAudio {
       try { Tone.getTransport().bpm.rampTo(Math.max(40, Math.min(120, bpm)), 8); } catch (_) {}
     }
 
-    // Stem layer volumes driven by ANS scalars
-    this._applyStemVolumesMusicParams(params);
+    // Stem layer volumes driven by ANS scalars + recovery_rate from 6D state vector
+    this._applyStemVolumesMusicParams(params, state);
     this._updateAlpha();
     this._maybeRotateStems();
   }
@@ -413,12 +428,15 @@ export class SessionAudio {
   }
 
   // Fine-grained stem adjustments driven by live backend music_params (1Hz)
-  _applyStemVolumesMusicParams(params) {
+  // state: optional StateVector dict — recovery_rate used as positive feedback on harmonic pad
+  _applyStemVolumesMusicParams(params, state) {
     if (!this._stemsStarted) return;
-    const presence = Math.max(0, Math.min(1, params.voice_range_presence ?? 0.4));
+    const presence      = Math.max(0, Math.min(1, params.voice_range_presence ?? 0.4));
+    const recoveryRate  = state?.recovery_rate ?? 0;
     if (this._stems.harmonic.isLoaded) {
-      // Harmonic pad responds to presence, but stays as support layer
-      this._setLayerVolume('harmonic', presence * 0.45, 2000);
+      // Harmonic pad responds to presence; recovering RMSSD adds ≤+0.05 — positive reinforcement
+      const recoveryBoost = Math.max(0, Math.min(0.05, recoveryRate * 0.05));
+      this._setLayerVolume('harmonic', Math.min(0.85, presence * 0.45 + recoveryBoost), 2000);
     }
   }
 

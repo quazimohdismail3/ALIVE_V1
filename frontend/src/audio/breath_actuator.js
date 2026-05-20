@@ -10,6 +10,7 @@ export class BreathActuator {
         }).toDestination();
         this._synth.volume.value = -60;
         this._rfBpm = 6;
+        this._ieFraction = 0.4; // inhale fraction of cycle; 0.4 = 40/60 I:E default
         this._running = false;
         this._timeout = null;
     }
@@ -30,6 +31,11 @@ export class BreathActuator {
         this._rfBpm = Math.max(4, Math.min(8.5, rfBpm));
     }
 
+    // breath_sync_ratio 0..1: 0.5 = default 40/60, 0.9 = more exhale-dominant (parasympathetic)
+    setIERatio(breathSyncRatio) {
+        this._ieFraction = Math.max(0.25, Math.min(0.5, 0.4 - (breathSyncRatio - 0.5) * 0.15));
+    }
+
     setVolume(vol, rampMs = 2000) {
         const db = vol <= 0.001 ? -60 : Tone.gainToDb(vol);
         this._synth.volume.rampTo(db, Math.max(rampMs, 2000) / 1000);
@@ -37,9 +43,9 @@ export class BreathActuator {
 
     _cycle() {
         if (!this._running) return;
-        const periodMs = (60 / this._rfBpm) * 1000;
-        const inhaleMs = periodMs * 0.4; // 40% inhale — clinically correct I:E ratio
-        const exhaleMs = periodMs * 0.6; // 60% exhale
+        const periodMs  = (60 / this._rfBpm) * 1000;
+        const inhaleMs  = periodMs * this._ieFraction;
+        const exhaleMs  = periodMs * (1 - this._ieFraction);
         try { this._synth.triggerAttack(174); } catch(_) {}
         this._timeout = setTimeout(() => {
             try { this._synth.triggerRelease(); } catch(_) {}

@@ -44,6 +44,7 @@ export class StemLayerPair {
     this._swapping      = false;
     this._started       = false;
     this._lastSwapMs    = 0;
+    this._holdMs        = 2 * 60 * 1000; // default 2-min HRV response hold
     this._pool          = [];      // [{id, url, energy, valence}] — set by setPool()
 
     // Callbacks
@@ -56,6 +57,11 @@ export class StemLayerPair {
   get volNode()  { return this._busVol; }
   get lastSwapMs() { return this._lastSwapMs; }
   get activeStemId() { return this._activeStemId; }
+
+  // beat_regularity 0..1: high = longer hold (3 min), low = shorter (90s). Default 2 min.
+  setHoldMs(beatRegularity) {
+    this._holdMs = Math.round(90000 + Math.max(0, Math.min(1, beatRegularity)) * 90000);
+  }
 
   // Set the pool of swappable stems for this layer.
   // Pool items: { id, url, energy, valence }
@@ -118,9 +124,9 @@ export class StemLayerPair {
   // Returns true if swap fires. Skipped if pool < 2, swapping in flight, or hold guard.
   async rotate(ansState = 'transitioning', durationS = 3.0) {
     if (this._swapping || !this._started) return false;
-    // 2-min hold after last swap (HRV response latency, 2–4 min)
+    // hold guard: HRV response latency 2–4 min (adjustable via setHoldMs from beat_regularity)
     const msSinceSwap = Date.now() - this._lastSwapMs;
-    if (this._lastSwapMs > 0 && msSinceSwap < 2 * 60 * 1000) return false;
+    if (this._lastSwapMs > 0 && msSinceSwap < this._holdMs) return false;
     if (!this._pool || this._pool.length < 2) return false; // no alternates
 
     const pick = this._selectStem(ansState);

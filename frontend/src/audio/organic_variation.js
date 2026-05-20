@@ -27,6 +27,7 @@ export class OrganicVariation {
     // Snapshot taken at silence start — disjoint from _baseDb so a concurrent
     // session param update during the silence window can't corrupt the restore target.
     this._preSilenceDb  = {};
+    this._silenceRatio  = 0.5; // default: silence every 8-12 min
     this._started       = false;
     this._disposed      = false;
     // No longer used for LFO path — LFO writes volNode.volume.rampTo() directly
@@ -82,6 +83,11 @@ export class OrganicVariation {
 
     // Silence actuator: schedule first fire in 8–12 minutes
     this._scheduleSilence();
+  }
+
+  // Update silence frequency. ratio 0..1: high = silences every 4-5 min, low = every 16-20 min.
+  setSilenceRatio(ratio) {
+    this._silenceRatio = Math.max(0, Math.min(1, ratio));
   }
 
   // Call when a stem swap occurs — silence actuator won't fire within 2 min of a swap
@@ -171,9 +177,10 @@ export class OrganicVariation {
   }
 
   _scheduleSilence() {
-    // 8–12 minutes between silence inserts (randomized per Bernardi 2006 protocol)
-    const minMs = 8  * 60 * 1000;
-    const maxMs = 12 * 60 * 1000;
+    // silence_ratio drives interval: 1.0 → 4-8 min, 0.5 (default) → 8-12 min, 0.0 → 16-20 min
+    const r = this._silenceRatio;
+    const minMs = ((1 - r) * 12 + 4) * 60 * 1000;
+    const maxMs = minMs + 4 * 60 * 1000;
     const delayMs = minMs + Math.random() * (maxMs - minMs);
 
     this._silenceTimer = setTimeout(() => {
