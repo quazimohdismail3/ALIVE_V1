@@ -21,11 +21,16 @@ export class OrganicVariation {
     this._silenceTimer  = null;
     this._silenceActive = false;
     this._lastSwapMs    = 0;
-    this._savedVolumes  = {}; // saved dB levels before silence
+    // Static base dB per layer — written ONLY by notifyBaseVolume from session-level
+    // _setLayerVolume. LFO reads this; never writes back. Prevents feedback drift.
+    this._baseDb        = {};
+    // Snapshot taken at silence start — disjoint from _baseDb so a concurrent
+    // session param update during the silence window can't corrupt the restore target.
+    this._preSilenceDb  = {};
     this._started       = false;
     this._disposed      = false;
-    // Callback set by session_audio so volume changes route through _baseVolumes registry.
-    // Signature: (layer: string, targetLinear: number, rampMs: number) => void
+    // No longer used for LFO path — LFO writes volNode.volume.rampTo() directly
+    // to avoid the feedback loop (Fix 2). Kept null for silence path compatibility.
     this._onVolumeChange = null;
   }
 
@@ -103,11 +108,12 @@ export class OrganicVariation {
     this._panner   = null;
   }
 
-  // Called by session_audio._setLayerVolume() to keep _savedVolumes in sync.
-  // Prevents _applyLFOs from reading a mid-ramp value as the base dB.
+  // Called by session_audio._setLayerVolume() to keep static base dB in sync.
+  // The LFO reads this base every tick and applies an offset; it NEVER writes
+  // back. Only session-level intentional volume changes update the base.
   notifyBaseVolume(layer, linearVol) {
     try {
-      this._savedVolumes[layer] = Tone.gainToDb(Math.max(0.0001, linearVol));
+      this._baseDb[layer] = Tone.gainToDb(Math.max(0.0001, linearVol));
     } catch (_) {}
   }
 
@@ -142,20 +148,17 @@ export class OrganicVariation {
       const volNode = this._volNodes[layer];
       if (!volNode || !lfo) return;
       try {
-        // Read LFO value and add as small dB offset (±1.5 dB imperceptible micro-shift)
+        // Read LFO value and add as small dB offset (±0.75 dB net, imperceptible).
         const lfoVal = lfo.value; // -1.5 to +1.5
-        // _savedVolumes is kept in sync by notifyBaseVolume() called from session_audio's
-        // _setLayerVolume — so base is always the session's intended target dB, not a
-        // mid-ramp live value (fixes concurrent rampTo race, Web Audio spec §4.3).
-        const base   = this._savedVolumes[layer] ?? volNode.volume.value;
+        // _baseDb is the STATIC session target — written only by notifyBaseVolume
+        // from session_audio._setLayerVolume. NEVER feed the modulated value back
+        // into _baseDb (was the drift bug pre-Fix 2). If base unknown, fall back to
+        // the live value once — but do NOT cache it; the session will publish soon.
+        const base = this._baseDb[layer];
+        if (base === undefined) return; // wait for first session-level volume push
         const targetDb = base + lfoVal * 0.5; // max ±0.75 dB net
-        if (this._onVolumeChange) {
-          // Route through session_audio's registry so _baseVolumes stays in sync
-          const targetLinear = Tone.dbToGain(targetDb);
-          this._onVolumeChange(layer, targetLinear, 3000); // 3s ramp
-        } else {
-          volNode.volume.rampTo(targetDb, 3);
-        }
+        // Write directly to volNode — bypass session registry to prevent feedback.
+        volNode.volume.rampTo(targetDb, 3);
       } catch (_) {}
     });
 
