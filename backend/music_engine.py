@@ -26,7 +26,7 @@ PARAM_NAMES = (
 )
 
 
-def _strategy_a(state: StateVector, session: str) -> dict:
+def _strategy_a(state: StateVector, session: str, affect_quadrant: str | None = None) -> dict:
     a = state.arousal
     v = state.valence
     st = state.stability
@@ -74,6 +74,22 @@ def _strategy_a(state: StateVector, session: str) -> dict:
     breath_sync_ratio = 0.5 + st * 0.4
     micro_variation = 0.1 + co * 0.3
 
+    # --- Affect quadrant layer (on top of ANS layer; Q4 = nominal, no adjustment)
+    if affect_quadrant == "Q3":
+        # Low arousal, negative valence (depressed/sad) → warmth + gradual uplift
+        warmth = min(1.0, warmth + 0.2)
+        brightness = min(1.0, brightness + 0.1)
+        silence_ratio = max(0.0, silence_ratio - 0.1)
+        key_mode = 1  # force major
+    elif affect_quadrant == "Q2":
+        # High arousal, negative valence (tense/angry) → grounding
+        harmonic_tension = max(0.0, harmonic_tension - 0.2)
+        beat_regularity = min(1.0, beat_regularity + 0.2)
+        rhythmic_complexity = max(0.0, rhythmic_complexity - 0.2)
+    elif affect_quadrant == "Q1":
+        # High arousal, positive valence (excited) → reduce arousal gently
+        silence_ratio = min(1.0, silence_ratio + 0.05)
+
     return dict(
         bpm=round(float(bpm), 2),
         rhythmic_complexity=round(float(rhythmic_complexity), 3),
@@ -94,9 +110,9 @@ def _strategy_a(state: StateVector, session: str) -> dict:
     )
 
 
-def generate_params(state: StateVector, session: str) -> tuple[dict, str]:
+def generate_params(state: StateVector, session: str, affect_quadrant: str | None = None) -> tuple[dict, str]:
     """Return (params, strategy). V1 always resolves to Strategy A."""
     b = gemini_mapper.map_state_to_params(state, session)
     if b is not None:
         return b, "B"
-    return _strategy_a(state, session), "A"
+    return _strategy_a(state, session, affect_quadrant=affect_quadrant), "A"

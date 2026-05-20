@@ -10,3 +10,4 @@ asyncpg>=0.29
 PyJWT[crypto]>=2.8
 sentry-sdk[fastapi]>=2.0
 pytest-asyncio>=0.23
+neurokit2>=0.2

@@ -25,7 +25,7 @@ from .auth import validate_token, AuthError
 from . import db, whoop_api
 from .rf_calibration import BayesianRFOptimizer, compute_coherence_at_frequency, MODE_CALIBRATION_CONFIG
 from .affect_classifier import classify as classify_affect
-from .ans_classifier import classify as classify_ans
+from .ans_classifier import classify as classify_ans, ANSClassifierHysteresis
 from .vs_score import compute_vs_adaptive
 from .state_classifier import StateClassifier
 from .latent_state import LatentStateExtractor
@@ -247,6 +247,7 @@ async def ws_session(
     safety = SafetySupervisor()
     state_classifier = StateClassifier()
     latent_extractor = LatentStateExtractor()
+    ans_hysteresis = ANSClassifierHysteresis(min_consecutive=3)
 
     traj: Trajectory | None = None
     prev_params: dict | None = None
@@ -584,7 +585,8 @@ async def ws_session(
                         rf_bpm = rf_optimizer.next_evaluation_point()
 
             # --- Parallel classifiers
-            ans = classify_ans(metrics, state.rmssd_norm, rf_hz=state.rf_hz, rf_error=state.rf_error)
+            _raw_ans = classify_ans(metrics, state.rmssd_norm, rf_hz=state.rf_hz, rf_error=state.rf_error)
+            ans = ans_hysteresis.update(_raw_ans)
             affect = classify_affect(metrics, state.rmssd_norm)
             state_dom_counter[ans.state] = state_dom_counter.get(ans.state, 0) + 1
             last_ans = ans
@@ -623,7 +625,7 @@ async def ws_session(
                 _steered = dyn.step(state, target, dt=1.0)
                 best_params, strategy, score = optimize(
                     state=state, target=target, session=session_profile, prev_params=prev_params,
-                    rf_error=state.rf_error,
+                    rf_error=state.rf_error, affect_quadrant=affect.quadrant,
                 )
                 prev_params = best_params
 

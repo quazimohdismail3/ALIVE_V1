@@ -92,9 +92,10 @@ def optimize(
     session: str,
     prev_params: dict | None = None,
     rf_error: float | None = None,
+    affect_quadrant: str | None = None,
 ) -> tuple[dict, str, float]:
     """Return (best_params, strategy, score)."""
-    base, strategy = generate_params(state, session)
+    base, strategy = generate_params(state, session, affect_quadrant=affect_quadrant)
     # Music entrainment: at slow tempos, breathing synchronizes at 1:4 tempo:RF ratio.
     # Target tempo for RF entrainment = user_rf_hz * 4 * 60 BPM (e.g., 0.1 Hz → 24 BPM accent).
     # Forward model tempo-RF coupling: UNTUNED — implement after V2.1 data collection.

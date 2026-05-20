@@ -200,15 +200,15 @@ class HRVProcessor:
             return None, None, None
 
     @staticmethod
-    def _dfa_alpha1(rr: np.ndarray) -> float:
-        # Detrended fluctuation analysis, short-term (alpha1).
-        # Approximate, fast version. For n<30 returns ~1.0 (neutral).
+    def _dfa_alpha1_fallback(rr: np.ndarray) -> float:
+        # Custom DFA with extended scale points — reduces drift on smooth signals
+        # vs the original 6-scale version.
         n = rr.size
         if n < 30:
             return 1.0
         try:
             y = np.cumsum(rr - np.mean(rr))
-            scales = [4, 6, 8, 10, 12, 16]
+            scales = [4, 6, 8, 10, 12, 16, 20, 24, 32]
             scales = [s for s in scales if s < n // 4]
             if len(scales) < 2:
                 return 1.0
@@ -233,3 +233,17 @@ class HRVProcessor:
             return max(0.3, min(1.8, alpha))
         except Exception:
             return 1.0
+
+    @staticmethod
+    def _dfa_alpha1(rr: np.ndarray) -> float:
+        # Detrended fluctuation analysis, short-term (alpha1).
+        # Tries NeuroKit2 first (accurate); falls back to extended custom DFA.
+        if rr.size < 30:
+            return 1.0
+        try:
+            import neurokit2 as nk
+            result = nk.hrv_nonlinear({"RRI": rr}, sampling_rate=4, show=False)
+            val = float(result["HRV_DFA_alpha1"].iloc[0])
+            return max(0.3, min(1.8, val))
+        except Exception:
+            return HRVProcessor._dfa_alpha1_fallback(rr)

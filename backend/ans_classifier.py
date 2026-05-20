@@ -60,6 +60,8 @@ def classify(m: HRVMetrics | None, rmssd_norm: float = 0.5, rf_hz: float | None 
         + 0.3 * _bell(m.sd1_sd2_ratio, center=0.65, width=0.25)
         + 0.2 * _bell(m.dfa_alpha1, center=1.0, width=0.3)
     )
+    if m.lf_hf_ratio is not None and 1.0 <= m.lf_hf_ratio <= 2.5:
+        s["ventral_vagal"] += 0.05 * _bell(m.lf_hf_ratio, center=1.5, width=0.7)
 
     # Healthy sympathetic: moderate RMSSD, low SVI, DFA ~1.0
     s["healthy_sympathetic"] = (
@@ -74,6 +76,8 @@ def classify(m: HRVMetrics | None, rmssd_norm: float = 0.5, rf_hz: float | None 
         + 0.4 * _ramp(m.svi, low=0.08, high=0.25)
         + 0.2 * (1.0 - min(1.0, m.sd1_sd2_ratio / 0.6))
     )
+    if m.lf_hf_ratio is not None and m.lf_hf_ratio > 2.0:
+        s["anxious_sympathetic"] += 0.1 * min(1.0, (m.lf_hf_ratio - 2.0) / 3.0)
 
     # Dorsal vagal: very low RMSSD, low HR, low DFA (rigid shutdown)
     s["dorsal_vagal"] = (
@@ -81,6 +85,8 @@ def classify(m: HRVMetrics | None, rmssd_norm: float = 0.5, rf_hz: float | None 
         + 0.3 * (1.0 if m.hr < 55 else max(0.0, 1.0 - (m.hr - 55) / 15))
         + 0.2 * (1.0 - min(1.0, m.dfa_alpha1 / 1.2))
     )
+    if m.lf_hf_ratio is not None and m.lf_hf_ratio < 0.8:
+        s["dorsal_vagal"] += 0.05 * max(0.0, 1.0 - m.lf_hf_ratio / 0.8)
 
     # Burnout rigidity: clinically requires ABSOLUTE low RMSSD AND low SVI.
     # Gate by absolute RMSSD < 30ms -- otherwise score is forced to ~0.
@@ -133,3 +139,44 @@ def _ramp(x: float, low: float, high: float) -> float:
     if x >= high:
         return 1.0
     return (x - low) / (high - low)
+
+
+class ANSClassifierHysteresis:
+    """Require N consecutive same classifications before accepting state change.
+    Prevents artifact-driven state flips at 1Hz update rate.
+    """
+
+    def __init__(self, min_consecutive: int = 3):
+        self.min_consecutive = min_consecutive
+        self._pending_state: str | None = None
+        self._pending_count: int = 0
+        self._confirmed_state: str = "ventral_vagal"
+
+    def update(self, raw: ANSClassification) -> ANSClassification:
+        """Return smoothed classification — only changes state after min_consecutive confirmations."""
+        if raw.state == self._confirmed_state:
+            self._pending_state = None
+            self._pending_count = 0
+            return raw
+        if raw.state == self._pending_state:
+            self._pending_count += 1
+        else:
+            self._pending_state = raw.state
+            self._pending_count = 1
+        if self._pending_count >= self.min_consecutive:
+            self._confirmed_state = raw.state
+            self._pending_state = None
+            self._pending_count = 0
+            return raw
+        # Pending: return confirmed state, signal reduced confidence
+        return ANSClassification(
+            state=self._confirmed_state,
+            confidence=raw.confidence * 0.8,
+            scores=raw.scores,
+            confidence_tag=raw.confidence_tag,
+        )
+
+    def reset(self) -> None:
+        self._pending_state = None
+        self._pending_count = 0
+        self._confirmed_state = "ventral_vagal"

@@ -9,7 +9,13 @@ SESSION_ARCS = {
         {"name": "ACKNOWLEDGE", "max_duration": 240,
          "transition": lambda vs, hrv: hrv.get("rmssd_delta", 0) >= 5},
         {"name": "SLOW",        "max_duration": 360,
-         "transition": lambda vs, hrv: hrv.get("lf_coherence_at_rf", 0) > 0.5 and vs >= 45},
+         # lf_coherence_at_rf absent from HRVMetrics; proxy: LF dominance = lf/(lf+hf) > 0.5
+         # indicates LF-band entrainment consistent with resonance-frequency breathing.
+         "transition": lambda vs, hrv: (
+             hrv.get("lf_power") is not None and hrv.get("hf_power") is not None
+             and hrv["lf_power"] / (hrv["lf_power"] + hrv["hf_power"] + 1e-9) > 0.5
+             and vs >= 45
+         )},
         {"name": "ANCHOR",      "max_duration": 420,
          "transition": lambda vs, hrv: vs >= 65},
         {"name": "RELEASE",     "max_duration": 120,
