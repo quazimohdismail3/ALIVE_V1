@@ -332,7 +332,10 @@ export class SessionAudio {
     if (this._stemsStarted) this._applyStemPhaseVolumes(phase);
   }
 
-  // Stem volumes driven by phase config (static ANS target for this phase)
+  // Stem volumes driven by phase config (static ANS target for this phase) +
+  // session arc (ENTRAIN nature-forward, INTEGRATE harmonic-forward).
+  // Research: auditory cortex adapts in seconds — varying the balance over the arc
+  // is the cheapest habituation defence we have until StemLayerPair rotation is live.
   _applyStemPhaseVolumes(phase) {
     const cfg = this._sessionCfg.phases?.[phase];
     if (!cfg) return;
@@ -341,19 +344,27 @@ export class SessionAudio {
     const coh  = t.coherence ?? 0.5;
     const isMorning = this.sessionType === 'morning_emergence';
 
+    // Arc shaping: scalar 0..1 representing arc progression.
+    // ENTRAIN: nature dominant (forest/wind front). INTEGRATE: harmonic forward (pad up).
+    // UNTUNED: re-validate balance once real Polar H10 sessions exist.
+    const arcScale = { ENTRAIN: 0.0, SHIFT: 0.5, INTEGRATE: 1.0 }[this._arcPhase] ?? 0.0;
+    const natureMul   = 1.0 - 0.35 * arcScale;  // 1.00 → 0.65
+    const harmonicMul = 1.0 + 0.55 * arcScale;  // 1.00 → 1.55
+
     // Ground drone (dungeon_drone_cc0.ogg) — muted. Semantically wrong for HRV therapy.
     // ChordEngine handles tonal ground layer if stems fail (via activateFallback).
     this._setLayerVolume('ground', 0.001, 4000);
 
     // Breath/nature texture (birds_wind) — prominent natural layer
     // Research (Annerstedt 2013, Miyazaki 2014): nature sounds are the active vagal ingredient.
-    this._setLayerVolume('breath_s', cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.15, 3000);
+    const breathBase = cfg.breathVol > 0 ? cfg.breathVol * 0.85 : 0.15;
+    this._setLayerVolume('breath_s', breathBase * natureMul, 3000);
 
-    // Harmonic pad (ether_vox) — support layer, below spatial
-    this._setLayerVolume('harmonic', calm * 0.42, 3000);
+    // Harmonic pad (ether_vox) — climbs from support to co-equal across arc
+    this._setLayerVolume('harmonic', Math.min(0.85, calm * 0.42 * harmonicMul), 3000);
 
     // Spatial / forest — dominant natural layer (highest volume)
-    this._setLayerVolume('spatial', isMorning ? 0.001 : calm * 0.58, 4000);
+    this._setLayerVolume('spatial', isMorning ? 0.001 : calm * 0.58 * natureMul, 4000);
 
     const morningPhases = ['ACTIVATE', 'ENERGIZE', 'PRIME'];
     this._setLayerVolume('morning',
@@ -396,6 +407,7 @@ export class SessionAudio {
   _updateArc() {
     if (!this._sessionStartMs) return;
     const elapsedMin = (Date.now() - this._sessionStartMs) / 60000;
+    const prev = this._arcPhase;
 
     if (this._arcPhase === 'ENTRAIN') {
       // Biometric gate: require 60s sustained coherence >= 0.5 after 8 min
@@ -407,5 +419,10 @@ export class SessionAudio {
       if (elapsedMin >= 20) this._arcPhase = 'INTEGRATE';
     }
     // INTEGRATE is terminal — no transition out
+
+    // Arc transition → re-apply stem volumes so the arc actually moves the balance.
+    if (prev !== this._arcPhase && this._stemsStarted && this._currentPhase) {
+      this._applyStemPhaseVolumes(this._currentPhase);
+    }
   }
 }
