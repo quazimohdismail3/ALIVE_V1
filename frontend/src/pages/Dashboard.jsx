@@ -108,6 +108,7 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
   const [loadingData, setLoadingData] = useState(true)
   const [sessionId, setSessionId]     = useState(DEFAULT_SESSION_ID)
   const [durationS, setDurationS]     = useState(DEFAULT_DURATION_S)
+  const [simMode, setSimMode]         = useState(false)
 
   useEffect(() => {
     let cancelled = false
@@ -148,9 +149,10 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
   function handleStart() {
     onStart({
       session: sessionId,
-      sensorMode: 2,
-      backendMode: 2,
+      sensorMode: simMode ? 1 : 2,
+      backendMode: simMode ? 1 : 2,
       durationS,
+      sim: simMode,
     })
   }
 
@@ -340,6 +342,35 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
               )
             })}
           </div>
+        </div>
+
+        {/* Simulation Mode toggle — discreet demo affordance */}
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6, marginBottom: 14 }}>
+          <button
+            onClick={() => setSimMode(s => !s)}
+            className="touch-target"
+            style={{
+              display: 'inline-flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', borderRadius: 999,
+              border: `1px solid ${simMode ? '#EF9F27' : 'rgba(255,255,255,0.12)'}`,
+              background: simMode ? 'rgba(239,159,39,0.10)' : 'rgba(255,255,255,0.03)',
+              color: simMode ? '#EF9F27' : 'var(--text-dim)',
+              fontSize: 11, fontWeight: 600, cursor: 'pointer',
+              letterSpacing: '0.04em', transition: 'all 200ms ease',
+            }}
+          >
+            <span style={{
+              width: 6, height: 6, borderRadius: '50%',
+              background: simMode ? '#EF9F27' : 'rgba(255,255,255,0.25)',
+              boxShadow: simMode ? '0 0 6px rgba(239,159,39,0.6)' : 'none',
+            }} />
+            {simMode ? 'Simulation Mode ON' : 'Use Simulator'}
+          </button>
+          {simMode && (
+            <div style={{ fontSize: 10, color: 'var(--text-dim)', letterSpacing: '0.02em' }}>
+              Demo mode — no heart rate strap needed.
+            </div>
+          )}
         </div>
 
         {/* Begin Session CTA */}

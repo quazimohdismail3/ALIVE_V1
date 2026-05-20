@@ -75,36 +75,66 @@ PROFILES["morning_emergence"] = PROFILES["energy"]
 class HRVSimulator:
     """Generates RR intervals for a chosen session profile."""
 
-    def __init__(self, profile: str = "calm", seed: int | None = None):
+    # Linear blend window at end of each phase (seconds). Targets cross-fade
+    # into the next phase over this window so demo dynamics look continuous.
+    PHASE_BLEND_S: float = 30.0
+    # Slow VLF-range wander period (seconds). Real HRV drifts on this scale.
+    VLF_PERIOD_S: float = 75.0
+    # ~1 in 200 beats inject an ectopic when enabled — rare enough to feel real,
+    # frequent enough to demo the artifact rejector during a 5–10 min session.
+    ECTOPIC_RATE: float = 1 / 200
+
+    def __init__(
+        self,
+        profile: str = "calm",
+        seed: int | None = None,
+        inject_ectopics: bool = False,
+    ):
         if profile not in PROFILES:
             raise ValueError(f"Unknown profile {profile!r}. Options: {list(PROFILES)}")
         self.profile_name = profile
         self.phases = PROFILES[profile]
         self.rng = random.Random(seed)
+        self.inject_ectopics = inject_ectopics
         self.t = 0.0  # elapsed seconds since start
         self._tick = 0  # beat counter for alternating perturbation
+        # Random VLF phase so concurrent sims don't lock-step.
+        self._vlf_phase = self.rng.uniform(0, 2 * math.pi)
 
     # --- public API
     def next_rr(self) -> float:
         """Return one RR interval in ms, advancing internal time."""
-        phase = self._current_phase()
-        rr_mean = 60_000.0 / phase.target_hr  # ms
+        target_hr, target_rmssd, sympathetic_drive, noise_ms = self._blended_targets()
+        rr_mean = 60_000.0 / target_hr  # ms
 
         # Beat-to-beat parasympathetic perturbation. RMSSD math:
         #   if RR_i = μ + ε_i with ε ~ N(0, σ²) iid, then
         #   RMSSD = std(diff(RR)) = σ·√2  →  σ = RMSSD/√2.
         # So drawing ε from N(0, target_rmssd/√2) produces measured RMSSD ≈ target.
-        sigma = phase.target_rmssd / math.sqrt(2)
+        sigma = target_rmssd / math.sqrt(2)
         para = self.rng.gauss(0, sigma)
         # Slow respiratory modulation of mean RR (cosmetic — does not drive RMSSD)
         resp = 6.0 * math.sin(2 * math.pi * (self.t / 4.0))
         # LF drift modulated by sympathetic drive
-        lf = phase.sympathetic_drive * 10 * math.sin(2 * math.pi * (self.t / 12.0))
+        lf = sympathetic_drive * 10 * math.sin(2 * math.pi * (self.t / 12.0))
+        # VLF-range wander so HR/RMSSD don't lock too cleanly across a session.
+        # Bounded ±4% of rr_mean so we stay near the profile target.
+        vlf = 0.04 * rr_mean * math.sin(
+            2 * math.pi * (self.t / self.VLF_PERIOD_S) + self._vlf_phase
+        )
         # Background noise floor (sensor jitter)
-        sensor = self.rng.gauss(0, phase.noise_ms * 0.3)
+        sensor = self.rng.gauss(0, noise_ms * 0.3)
         self._tick += 1
 
-        rr = rr_mean + para + resp + lf + sensor
+        rr = rr_mean + para + resp + lf + vlf + sensor
+
+        # Opt-in ectopic injection: deviate >20% from rr_mean so the downstream
+        # artifact rejector (median-window >20%) flags + drops it.
+        if self.inject_ectopics and self.rng.random() < self.ECTOPIC_RATE:
+            # Half premature (short), half compensatory (long); ±25–35% deviation.
+            direction = -1 if self.rng.random() < 0.5 else 1
+            rr = rr_mean * (1 + direction * self.rng.uniform(0.25, 0.35))
+
         rr = max(300.0, min(2000.0, rr))  # physiological clamp
         self.t += rr / 1000.0
         return rr
@@ -125,6 +155,31 @@ class HRVSimulator:
             if self.t < elapsed:
                 return p
         return self.phases[-1]
+
+    def _blended_targets(self) -> tuple[float, float, float, float]:
+        """Return (target_hr, target_rmssd, sympathetic_drive, noise_ms),
+        linearly blended into the next phase over the last PHASE_BLEND_S
+        seconds so phase boundaries don't snap."""
+        elapsed = 0.0
+        for i, p in enumerate(self.phases):
+            phase_end = elapsed + p.duration_s
+            if self.t < phase_end:
+                # How far we are into this phase, and how close to its end.
+                remaining = phase_end - self.t
+                nxt = self.phases[i + 1] if i + 1 < len(self.phases) else None
+                if nxt is not None and remaining < self.PHASE_BLEND_S:
+                    # Blend factor: 0 at PHASE_BLEND_S left, 1 at phase end.
+                    a = 1 - (remaining / self.PHASE_BLEND_S)
+                    return (
+                        p.target_hr        * (1 - a) + nxt.target_hr        * a,
+                        p.target_rmssd     * (1 - a) + nxt.target_rmssd     * a,
+                        p.sympathetic_drive * (1 - a) + nxt.sympathetic_drive * a,
+                        p.noise_ms         * (1 - a) + nxt.noise_ms         * a,
+                    )
+                return (p.target_hr, p.target_rmssd, p.sympathetic_drive, p.noise_ms)
+            elapsed = phase_end
+        last = self.phases[-1]
+        return (last.target_hr, last.target_rmssd, last.sympathetic_drive, last.noise_ms)
 
 
 if __name__ == "__main__":
