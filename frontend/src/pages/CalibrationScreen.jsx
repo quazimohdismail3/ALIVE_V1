@@ -264,7 +264,7 @@ export default function CalibrationScreen({ onReady }) {
                 {liveHr && (
                   <>
                     <text x="100" y="148" textAnchor="middle" fill="#fff" fontSize="17" fontWeight="700" fontFamily="system-ui" letterSpacing="-0.5">{liveHr}</text>
-                    <text x="100" y="162" textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize="9" fontFamily="system-ui">bpm</text>
+                    <text x="100" y="162" textAnchor="middle" fill="rgba(255,255,255,0.38)" fontSize="11" fontFamily="system-ui">bpm</text>
                   </>
                 )}
               </svg>
