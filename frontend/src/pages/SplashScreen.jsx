@@ -44,7 +44,7 @@ export default function SplashScreen({ onDone }) {
         textTransform: 'uppercase',
         animation: 'splashPulse 1.5s ease infinite',
       }}>
-        Autonomic regulation
+        Tune your nervous system
       </div>
     </div>
   )
