@@ -35,7 +35,12 @@ def _strategy_a(state: StateVector, session: str, affect_quadrant: str | None = 
 
     # --- Tier 1 Temporal
     # LOW RMSSD → SLOWER tempo (spec fix — not the opposite)
-    bpm = 60 + rm * 40 + a * 10          # 60..110
+    # Therapeutic window: 50-75 BPM (Bernardi 2006 — 60 BPM aligns with RF breathing
+    # 5-6 bpm × 10s cycle; >75 BPM enters aerobic territory and disrupts vagal tone).
+    # Morning sessions cap higher (up to 78) for healthy activation.
+    # UNTUNED: re-validate ceiling once real Polar H10 sessions exist (CLAUDE.md V2.1).
+    bpm_max = 78.0 if session == "morning_emergence" else 75.0
+    bpm = max(50.0, min(bpm_max, 55.0 + rm * 15.0 + a * 8.0))
     rhythmic_complexity = 0.2 + a * 0.5
     beat_regularity = 0.5 + st * 0.5
     silence_ratio = 0.6 - a * 0.5
