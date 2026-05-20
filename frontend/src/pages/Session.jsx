@@ -12,6 +12,8 @@ import { MusicParams } from '../components/MusicParams.jsx';
 import { SensorStatusBar } from '../components/SensorStatusBar.jsx';
 import { SessionTimeline } from '../components/SessionTimeline.jsx';
 import { DiscardSheet } from '../components/DiscardSheet.jsx';
+import { BreathPhaseLabel } from '../components/BreathPhaseLabel.jsx';
+import { ReconnectOverlay } from '../components/ReconnectOverlay.jsx';
 import { SensorFusion } from '../sensors/sensor_fusion.js';
 import { useSensorContext } from '../context/SensorContext.jsx';
 
@@ -78,6 +80,9 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const [hrvPoints, setHrvPoints]   = useState([]);
   const [activeTip, setActiveTip]   = useState(null);
   const [justLocked, setJustLocked] = useState(false);
+  const [showAdvanced, setShowAdvanced] = useState(false);
+  const [reconnecting, setReconnecting] = useState(false);
+  const [retryAttempt, setRetryAttempt] = useState(0);
 
   const wsRef       = useRef(null);
   const fusionRef   = useRef(null);
@@ -87,6 +92,10 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const startTimeRef = useRef(null);
   const lastFlashRef = useRef(0);
   const lastSeqRef   = useRef(0); // stale-frame guard for incoming backend messages
+  const userClosedRef = useRef(false); // true when cleanup/endSession initiated WS close
+  const connectWsRef  = useRef(null);  // exposes connectWs() to retry handlers
+  const retryTimerRef = useRef(null);
+  const retryAttemptRef = useRef(0);
 
   // Apply ANS state + VS period to root for CSS cascade
   useEffect(() => {
@@ -127,7 +136,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     let cancelled = false;
     accumReset();
 
-    async function startSession() {
+    async function connectWs() {
       // Get Supabase JWT
       const authToken = await getAuthToken();
 
@@ -143,7 +152,42 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           clearInterval(flushSentinel);
         }
       }, 50);
+
+      // Mid-session WS close → schedule auto-retry with backoff (1s/2s/4s, max 3)
+      const attachCloseHandler = () => {
+        if (!ws.ws) return;
+        ws.ws.addEventListener('close', () => {
+          if (userClosedRef.current) return; // user-initiated end/discard
+          const elapsedNow = startTimeRef.current ? Math.floor((Date.now() - startTimeRef.current) / 1000) : 0;
+          if (sessionDurationS > 0 && elapsedNow >= sessionDurationS) return; // session already over
+          if (bleStatus === 'failed') return; // BLE itself is gone — separate UX path
+          const next = retryAttemptRef.current + 1;
+          retryAttemptRef.current = next;
+          setRetryAttempt(next);
+          setReconnecting(true);
+          if (next > 3) return; // overlay stays visible; user picks Retry or End
+          const delays = [1000, 2000, 4000];
+          const delay = delays[Math.min(next - 1, delays.length - 1)];
+          clearTimeout(retryTimerRef.current);
+          retryTimerRef.current = setTimeout(() => {
+            if (cancelled || userClosedRef.current) return;
+            try { audioRef.current?.pause?.(); } catch (_) {}
+            connectWsRef.current?.();
+          }, delay);
+        });
+      };
+      // ws.ws may not exist yet (connect() is async); attach via micro-tick poll
+      const attachIv = setInterval(() => {
+        if (ws.ws) { clearInterval(attachIv); attachCloseHandler(); }
+      }, 20);
+
       wsRef.current = ws;
+    }
+    connectWsRef.current = connectWs;
+
+    async function startSession() {
+      await connectWs();
+      if (cancelled) return;
 
       // Setup must hand off a started fusion. If absent (direct nav / refresh)
       // we still create one, but flag sensorReady=false until a real reading arrives.
@@ -170,14 +214,16 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       // RR + resp_amp send loop
       sendIvRef.current = setInterval(() => {
         if (!fusionRef.current) return;
+        const liveWs = wsRef.current;
+        if (!liveWs) return;
         const newRRs = fusionRef.current.drainNew ? fusionRef.current.drainNew() : [];
         const reading = fusionRef.current.getReading();
         const respAmp = reading?.resp_amp ?? 0;
         if (newRRs.length > 0) {
           if (!sensorReady) setSensorReady(true);
-          newRRs.forEach(rr => ws.send({ rr, resp_amp: respAmp }));
+          newRRs.forEach(rr => liveWs.send({ rr, resp_amp: respAmp }));
         } else if (respAmp > 0) {
-          ws.send({ resp_amp: respAmp });
+          liveWs.send({ resp_amp: respAmp });
         }
       }, 500);
     }
@@ -201,8 +247,16 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
     if (msg.type === 'auth_ok') {
       setWsStatus('live');
-      // Start audio with locked RF from calibration (fallback to msg.rf_bpm or 6)
-      audioRef.current?.start(rfBpm ?? msg.rf_bpm ?? 6).catch(() => {});
+      // Reconnect success — clear overlay, reset retry counter, resume audio if paused
+      if (reconnecting) {
+        setReconnecting(false);
+        setRetryAttempt(0);
+        retryAttemptRef.current = 0;
+        try { audioRef.current?.resume?.(); } catch (_) {}
+      } else {
+        // First connect — start audio with locked RF from calibration (fallback to msg.rf_bpm or 6)
+        audioRef.current?.start(rfBpm ?? msg.rf_bpm ?? 6).catch(() => {});
+      }
       return;
     }
     if (msg.status) {
@@ -234,6 +288,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   }
 
   function cleanup(sendStop) {
+    userClosedRef.current = true;
+    clearTimeout(retryTimerRef.current);
     clearInterval(timerRef.current);
     clearInterval(sendIvRef.current);
     if (sendStop) wsRef.current?.send({ cmd: 'stop' });
@@ -247,6 +303,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   }
 
   async function endSession(discard = false) {
+    userClosedRef.current = true;
+    clearTimeout(retryTimerRef.current);
     if (discard) {
       wsRef.current?.send({ cmd: 'discard' });
       await new Promise(r => setTimeout(r, 250)); // give backend time to receive discard before WS closes
@@ -282,7 +340,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
     if (now - lastFlashRef.current < 5000) return;
     lastFlashRef.current = now;
     setJustLocked(true);
-    const t = setTimeout(() => setJustLocked(false), 1000);
+    const t = setTimeout(() => setJustLocked(false), 3000);
     return () => clearTimeout(t);
   }, [inResonance]);
 
@@ -295,7 +353,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         <div style={{
           position: 'fixed', inset: 0, pointerEvents: 'none', zIndex: 1,
           background: `radial-gradient(circle at 50% 50%, ${ansColor}40, transparent 60%)`,
-          animation: 'resonanceFlash 1000ms ease-out forwards',
+          animation: 'resonanceFlash 3000ms ease-in-out forwards',
         }} />
       )}
 
@@ -346,17 +404,35 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           <div style={{ fontSize: 8, color: `${ansColor}66` }}>br / min</div>
         </div>
 
+        {/* Target orb subtitle — only when calibrated RF is known */}
+        {frame?.rf_calibrated_hz != null && (
+          <div style={{
+            fontSize: 10,
+            color: 'rgba(255,255,255,0.32)',
+            textAlign: 'center',
+            marginTop: -8,
+            letterSpacing: '0.02em',
+            textTransform: 'none',
+          }}>
+            Your calibrated resonance frequency.
+          </div>
+        )}
+
         {/* Gap indicator / resonance label */}
-        <div style={{
-          fontSize: 10, letterSpacing: '0.1em', textTransform: 'uppercase',
-          color: inResonance ? `${ansColor}cc` : 'rgba(255,255,255,0.2)',
-          transition: 'color 800ms ease',
-          minHeight: 14,
-        }}>
-          {inResonance
-            ? 'RESONANCE'
-            : rfHz ? `${rfHz < rfCalibratedHz ? '↓' : '↑'} ${Math.abs((rfHz - rfCalibratedHz) * 60).toFixed(1)} off` : ''}
-        </div>
+        {inResonance ? (
+          <div style={{
+            fontSize: 11,
+            letterSpacing: '0.1em',
+            color: `${ansColor}cc`,
+            transition: 'color 800ms ease',
+            minHeight: 14,
+            textAlign: 'center',
+          }}>
+            Resonance. Stay here.
+          </div>
+        ) : (
+          <BreathPhaseLabel color={ansColor} />
+        )}
 
         {/* Live orb — measured breathing rate */}
         <div style={{
@@ -366,7 +442,8 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           boxShadow: `0 0 ${inResonance ? 80 : 55}px ${ansColor}${inResonance ? '55' : '33'}`,
           display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
           animation: 'orbPulse var(--rf-measured-period, 10s) ease-in-out infinite',
-          transition: 'box-shadow 1200ms ease, border-color 1200ms ease',
+          transition: 'box-shadow 1200ms ease, border-color 1200ms ease, transform 1200ms ease',
+          outline: inResonance && justLocked ? `1px solid ${ansColor}33` : 'none',
         }}>
           <div style={{ fontSize: 8, textTransform: 'uppercase', letterSpacing: '0.12em', color: `${ansColor}bb`, marginBottom: 2 }}>breathing</div>
           <div style={{ fontSize: 28, fontWeight: 800, color: `${ansColor}ee`, lineHeight: 1, fontVariantNumeric: 'tabular-nums' }}>
@@ -485,8 +562,26 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           </div>
         </div>
 
-        {/* RF coherence bar */}
-        {frame?.rf_coherence != null && (
+        {/* RF coherence bar — hidden by default; tap "…" to reveal (magic stays backstage) */}
+        {frame?.rf_coherence != null && !showAdvanced && (
+          <div style={{ display: 'flex', justifyContent: 'center', marginBottom: 24 }}>
+            <button
+              onClick={() => setShowAdvanced(true)}
+              aria-label="Show advanced metrics"
+              style={{
+                width: 24, height: 24, borderRadius: '50%',
+                background: 'rgba(255,255,255,0.06)',
+                border: 'none',
+                color: 'var(--text-dim)',
+                fontSize: 14,
+                cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'center',
+                lineHeight: 1,
+              }}
+            >…</button>
+          </div>
+        )}
+        {frame?.rf_coherence != null && showAdvanced && (
           <div className="v2-card fade-slide-up" style={{ marginBottom: 24 }}>
             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 6 }}>
               <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
@@ -505,6 +600,20 @@ export default function Session({ cfg, onEnd, onDiscard }) {
                 transition: 'width 800ms ease, background 600ms ease',
               }} />
             </div>
+            <button
+              onClick={() => setShowAdvanced(false)}
+              style={{
+                marginTop: 8,
+                background: 'transparent',
+                border: 'none',
+                color: 'var(--text-dim)',
+                fontSize: 10,
+                letterSpacing: '0.06em',
+                textTransform: 'uppercase',
+                cursor: 'pointer',
+                padding: 0,
+              }}
+            >Hide</button>
           </div>
         )}
       </div>
@@ -528,6 +637,24 @@ export default function Session({ cfg, onEnd, onDiscard }) {
           onCancel={() => setShowDiscard(false)}
         />
       )}
+
+      {/* Reconnect overlay — visible during auto-retry or after exhaustion */}
+      <ReconnectOverlay
+        visible={reconnecting}
+        retryAttempt={retryAttempt}
+        maxRetries={3}
+        onManualRetry={({ end }) => {
+          if (end) {
+            endSession(false);
+          } else {
+            // Reset counter and immediately reconnect
+            setRetryAttempt(0);
+            retryAttemptRef.current = 0;
+            clearTimeout(retryTimerRef.current);
+            connectWsRef.current?.();
+          }
+        }}
+      />
     </div>
   );
 }
