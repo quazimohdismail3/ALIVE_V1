@@ -6,6 +6,7 @@ import { SensorFusion } from '../sensors/sensor_fusion.js'
 import { patchProfileCalibration } from '../lib/api.js'
 import { useSensorContext } from '../context/SensorContext.jsx'
 import { useWakeLock } from '../hooks/useWakeLock.js'
+import { ReconnectOverlay } from '../components/ReconnectOverlay.jsx'
 
 const PHRASES = [
   'Listening to your autonomic rhythm…',
@@ -40,6 +41,7 @@ export default function CalibrationScreen({ onReady }) {
   const sendIvRef = useRef(null)
   const prevHrRef = useRef(null)
   const calStartedRef = useRef(false)
+  const wsRetryCountRef = useRef(0)
 
   // Rotate autonomic phrases every 4s during calibration
   useEffect(() => {
@@ -91,6 +93,11 @@ export default function CalibrationScreen({ onReady }) {
       ws.ws.addEventListener('close', () => clearInterval(sendIvRef.current))
       ws.ws.addEventListener('error', () => {
         clearInterval(sendIvRef.current)
+        if (wsRetryCountRef.current < 1) {
+          wsRetryCountRef.current += 1
+          setTimeout(() => { startCalibration() }, 1000)
+          return
+        }
         setPhase('error')
         setErrorMsg('WebSocket error — check connection and retry')
       })
@@ -304,6 +311,13 @@ export default function CalibrationScreen({ onReady }) {
             )}
           </>
         )}
+
+        <ReconnectOverlay
+          visible={bleStatus === 'reconnecting' && phase === 'calibrating'}
+          retryAttempt={1}
+          maxRetries={3}
+          onManualRetry={() => requestBle()}
+        />
 
         {phase === 'error' && (
           <div style={{ textAlign: 'center', padding: '32px 16px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>

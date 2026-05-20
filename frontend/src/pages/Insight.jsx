@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { useWakeLock } from '../hooks/useWakeLock.js';
 import { InsightCard } from '../components/InsightCard.jsx';
+import { pickInsightCopy } from '../copy/insightTemplates.js';
 
 // Recommendation codes by dominant ANS state
 const R_CODES = {
@@ -67,6 +68,18 @@ export default function Insight({ data, onDone }) {
   const nextSes = NEXT_SESSION[session_type];
   const peakColor = vsColor(peak_vs);
   const finalColor = vsColor(final_vs);
+
+  // Derive trajectory from peak_vs vs final_vs (backend may also send ans_trajectory directly).
+  // declined: peak − final ≥ 10 · improved: final > peak (rare) · else stable.
+  const trajectory = data.ans_trajectory ?? (() => {
+    if (peak_vs == null || final_vs == null) return 'stable';
+    if (final_vs > peak_vs) return 'improved';
+    if (peak_vs - final_vs >= 10) return 'declined';
+    return 'stable';
+  })();
+
+  // ANS-aware narrative leads when a template matches; falls back to legacy intro otherwise.
+  const ansNarrative = pickInsightCopy(dominant_ans, trajectory);
 
   // Narrative debrief
   const intro = peak_vs >= 56
@@ -136,7 +149,7 @@ export default function Insight({ data, onDone }) {
         <div className="v2-card fade-slide-up" style={{ marginBottom: 16 }}>
           <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 8 }}>What happened</div>
           <p style={{ color: 'var(--text)', fontSize: 15, lineHeight: 1.65, margin: 0 }}>
-            {intro}
+            {ansNarrative ?? intro}
             {retention ? ` ${retention}` : ''}
             {avg_rmssd ? ` Mean RMSSD was ${avg_rmssd}ms.` : ''}
           </p>
@@ -235,7 +248,13 @@ export default function Insight({ data, onDone }) {
         <div style={{ display: 'flex', gap: 12 }}>
           <button
             onClick={async () => {
-              const text = `ALIVE session complete\n${vsLabel(peak_vs)} — ${Math.round(peak_vs)} VS\nRF: ${rf_bpm ? rf_bpm.toFixed(1) + ' bpm' : '—'} | RMSSD: ${avg_rmssd ?? '—'}ms`
+              const dateStr = new Date().toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
+              const ansStr = dominant_ans ? dominant_ans.replace(/_/g, ' ') : '—'
+              const text =
+`ALIVE — ${dateStr}
+${vsLabel(peak_vs)} • ${Math.round(peak_vs)} VS
+ANS: ${ansStr}
+RF: ${rf_bpm ? rf_bpm.toFixed(1) + ' bpm' : '—'} • RMSSD: ${avg_rmssd ?? '—'} ms`
               if (navigator.share) {
                 try { await navigator.share({ text }) } catch (_) {}
               } else {
