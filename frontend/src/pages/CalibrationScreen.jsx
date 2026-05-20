@@ -314,7 +314,7 @@ export default function CalibrationScreen({ onReady }) {
 
         <ReconnectOverlay
           visible={bleStatus === 'reconnecting' && phase === 'calibrating'}
-          retryAttempt={1}
+          retryAttempt={null}
           maxRetries={3}
           onManualRetry={() => requestBle()}
         />

@@ -69,6 +69,10 @@ function AppRoutes() {
     return () => { cancelled = true }
   }, [user])
 
+  const h10IntroSeen = () => {
+    try { return localStorage.getItem('h10_intro_seen') === '1' } catch (_) { return false }
+  }
+
   // Route once profile is loaded
   useEffect(() => {
     if (screen !== 'profile-loading') return
@@ -84,10 +88,6 @@ function AppRoutes() {
     if (!user && screen !== 'login') setScreen('login')
     if (user && screen === 'login') setScreen('profile-loading')
   }, [user, screen])
-
-  const h10IntroSeen = () => {
-    try { return localStorage.getItem('h10_intro_seen') === '1' } catch (_) { return false }
-  }
 
   const handleCalibrationReady = useCallback((readyCfg) => {
     setCfg(readyCfg)

@@ -19,7 +19,8 @@ export function ReconnectOverlay({
 
   if (!visible) return null;
 
-  const exhausted = retryAttempt >= maxRetries;
+  const showAttempt = typeof retryAttempt === 'number' && retryAttempt > 0;
+  const exhausted = showAttempt && retryAttempt >= maxRetries;
 
   return (
     <div
@@ -89,7 +90,9 @@ export function ReconnectOverlay({
         >
           {exhausted
             ? 'We held your session, but the strap didn’t come back. Try a manual retry, or end the session.'
-            : `Attempt ${retryAttempt}/${maxRetries} — keep the strap on your chest. We’re holding your session.`}
+            : showAttempt
+              ? `Attempt ${retryAttempt}/${maxRetries} — keep the strap on your chest. We’re holding your session.`
+              : 'Keep the strap on your chest. We’re holding your session.'}
         </div>
         <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
           <button

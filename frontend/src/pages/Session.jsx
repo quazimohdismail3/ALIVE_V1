@@ -96,6 +96,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   const connectWsRef  = useRef(null);  // exposes connectWs() to retry handlers
   const retryTimerRef = useRef(null);
   const retryAttemptRef = useRef(0);
+  const attachIvRef = useRef(null);
 
   // Apply ANS state + VS period to root for CSS cascade
   useEffect(() => {
@@ -177,8 +178,9 @@ export default function Session({ cfg, onEnd, onDiscard }) {
         });
       };
       // ws.ws may not exist yet (connect() is async); attach via micro-tick poll
-      const attachIv = setInterval(() => {
-        if (ws.ws) { clearInterval(attachIv); attachCloseHandler(); }
+      clearInterval(attachIvRef.current);
+      attachIvRef.current = setInterval(() => {
+        if (ws.ws) { clearInterval(attachIvRef.current); attachCloseHandler(); }
       }, 20);
 
       wsRef.current = ws;
@@ -290,6 +292,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
   function cleanup(sendStop) {
     userClosedRef.current = true;
     clearTimeout(retryTimerRef.current);
+    clearInterval(attachIvRef.current);
     clearInterval(timerRef.current);
     clearInterval(sendIvRef.current);
     if (sendStop) wsRef.current?.send({ cmd: 'stop' });
