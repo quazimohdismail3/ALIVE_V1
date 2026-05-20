@@ -194,11 +194,15 @@ export class OrganicVariation {
 
     this._silenceActive = true;
 
-    // Save current volumes
+    // Snapshot session base dB into a DISJOINT map (_preSilenceDb).
+    // Must not share storage with _baseDb — a session param update during the
+    // 5-6s silence window would otherwise overwrite the restore target.
+    // Prefer _baseDb (session intent), fall back to live volume only if missing.
     Object.entries(this._volNodes).forEach(([layer, volNode]) => {
-      if (volNode) {
-        try { this._savedVolumes[layer] = volNode.volume.value; } catch (_) {}
-      }
+      if (!volNode) return;
+      try {
+        this._preSilenceDb[layer] = this._baseDb[layer] ?? volNode.volume.value;
+      } catch (_) {}
     });
 
     // Fade out over 3 seconds
@@ -213,17 +217,13 @@ export class OrganicVariation {
 
     if (!this._started || this._disposed) return;
 
-    // Fade back in over 4 seconds
+    // Fade back in over 4 seconds — restore from the snapshot taken pre-silence,
+    // overlaid with any session updates that arrived during the window
+    // (_baseDb is more current than _preSilenceDb if session pushed an update).
     Object.entries(this._volNodes).forEach(([layer, volNode]) => {
       if (!volNode) return;
-      const targetDb = this._savedVolumes[layer] ?? -20;
-      try {
-        if (this._onVolumeChange) {
-          this._onVolumeChange(layer, Tone.dbToGain(targetDb), 4000);
-        } else {
-          volNode.volume.rampTo(targetDb, 4);
-        }
-      } catch (_) {}
+      const targetDb = this._baseDb[layer] ?? this._preSilenceDb[layer] ?? -20;
+      try { volNode.volume.rampTo(targetDb, 4); } catch (_) {}
     });
 
     await new Promise(r => setTimeout(r, 4500)); // wait for fade-back to complete
