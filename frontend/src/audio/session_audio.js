@@ -162,10 +162,15 @@ export class SessionAudio {
       else                      this._coherentSeconds  = 0;
     }
 
-    // Binaural: bridge-blended beat, 45s glide
+    // Binaural: bridge-blended beat, 45s glide.
+    // CARRIER FIX (Oster 1973): binaural_carrier_hz MUST be in ITD perception range
+    // (100–1500 Hz). Never use soma_carrier_hz (40–60 Hz) here — sub-100 collapses
+    // the beat percept into two subaudible thumps.
     const beatHz    = params.binaural_beat_hz ?? null;
-    const carrierHz = params.soma_carrier_hz  ?? null;
-    if (beatHz !== null && carrierHz !== null) {
+    const phaseCarrier = this._sessionCfg.phases?.[this._currentPhase]?.carrier;
+    const carrierHz = params.binaural_carrier_hz
+                   ?? (phaseCarrier && phaseCarrier >= 100 ? phaseCarrier : 432);
+    if (beatHz !== null) {
       const targetBeat = this._phaseTarget?.binaural ?? beatHz;
       const bridgeBeat = this._isoBridge(beatHz, targetBeat);
       this.binaural.set(bridgeBeat, carrierHz, BINAURAL_GLIDE_MS);
@@ -304,7 +309,9 @@ export class SessionAudio {
     if (!cfg) return;
     this._currentPhase = phase;
     this._phaseTarget  = cfg.isoTarget ?? null;
-    this.binaural.set(cfg.binaural, cfg.carrier, BINAURAL_GLIDE_MS);
+    // Guard: never let phase config push binaural carrier below 100Hz (Oster 1973).
+    const safeCarrier = (cfg.carrier && cfg.carrier >= 100) ? cfg.carrier : 432;
+    this.binaural.set(cfg.binaural, safeCarrier, BINAURAL_GLIDE_MS);
 
     // Breath guide: scale to 25% of configured volume — subtle hint, not dominant tone
     // Research: breath guide should be felt as invitation, not heard as buzzing sine

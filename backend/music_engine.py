@@ -22,7 +22,7 @@ PARAM_NAMES = (
     # Tier 3 Timbral
     "brightness", "roughness", "warmth", "spatial_width",
     # Tier 4 Biological
-    "soma_carrier_hz", "binaural_beat_hz", "breath_sync_ratio", "micro_variation",
+    "soma_carrier_hz", "binaural_carrier_hz", "binaural_beat_hz", "breath_sync_ratio", "micro_variation",
 )
 
 
@@ -56,12 +56,22 @@ def _strategy_a(state: StateVector, session: str, affect_quadrant: str | None = 
 
     # --- Tier 4 Biological
     # SOMA carrier: 40Hz entrainment (focus) → 60Hz relaxation → 52Hz neutral
+    # NOTE: sub-100Hz, used for somatic/ASSR layer only — NEVER as binaural carrier (Oster 1973)
     if session in ("focus", "adhd_flow"):
         soma_carrier_hz = 40.0
     elif session in ("calm", "recovery", "presence"):
         soma_carrier_hz = 60.0
     else:
         soma_carrier_hz = 52.0
+
+    # Binaural carrier: MUST stay in ITD perception range 100–1500 Hz (Oster 1973).
+    # 432Hz = calm pad fundamental; 396Hz = morning/focus; 256Hz = neutral default.
+    if session in ("morning_emergence", "focus", "adhd_flow"):
+        binaural_carrier_hz = 396.0
+    elif session in ("wind_down",):
+        binaural_carrier_hz = 256.0  # deeper, no sub-100 risk
+    else:
+        binaural_carrier_hz = 432.0  # calm / find_your_calm / default
 
     # Binaural: low arousal → theta (6Hz), mid → alpha (10Hz), high → beta (18Hz)
     if a < 0.35:
@@ -104,6 +114,7 @@ def _strategy_a(state: StateVector, session: str, affect_quadrant: str | None = 
         warmth=round(float(warmth), 3),
         spatial_width=round(float(spatial_width), 3),
         soma_carrier_hz=round(float(soma_carrier_hz), 2),
+        binaural_carrier_hz=round(float(binaural_carrier_hz), 2),
         binaural_beat_hz=round(float(binaural_beat_hz), 2),
         breath_sync_ratio=round(float(breath_sync_ratio), 3),
         micro_variation=round(float(micro_variation), 3),
