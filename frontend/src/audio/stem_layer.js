@@ -3,9 +3,13 @@
 import * as Tone from 'tone';
 
 export class StemLayer {
-  constructor() {
+  // output: optional Tone node to route into. Defaults to destination.
+  // StemLayerPair passes its bus volume so two stems crossfading share one session-level fader.
+  constructor(output = null) {
     this._player  = null;
-    this._volNode = new Tone.Volume(-60).toDestination();
+    this._volNode = new Tone.Volume(-60);
+    if (output) this._volNode.connect(output);
+    else        this._volNode.toDestination();
     this._loaded  = false;
     this._playing = false;
   }

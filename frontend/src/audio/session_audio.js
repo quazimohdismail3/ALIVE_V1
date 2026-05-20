@@ -18,6 +18,7 @@ import * as Tone from 'tone';
 import { BinauralGenerator } from './binaural.js';
 import { BreathActuator }    from './breath_actuator.js';
 import { StemLayer }         from './stem_layer.js';
+import { StemLayerPair }     from './stem_layer_pair.js';
 import { stemLoader }        from './stem_loader.js';
 import { ChordEngine }       from './chord_engine.js';
 import { OrganicVariation }  from './organic_variation.js';
@@ -47,13 +48,16 @@ export class SessionAudio {
     // Procedural harmonic pad — silent until harmonic stem fails to load
     this._chord = new ChordEngine();
 
-    // Stem layers (progressive — load async, fallback = chord engine / silent if absent)
+    // Stem layers. Perceptually-dominant layers (breath_s/harmonic/spatial) are
+    // StemLayerPair so they can rotate between manifest alternates as soon as the
+    // pool has 2+ stems — defends against auditory cortex habituation (~8-10 min).
+    // Ground (muted) and morning (single-stem-only) stay as plain StemLayer.
     this._stems = {
-      ground:   new StemLayer(), // low-freq drone texture (muted — dungeon wrong for HRV)
-      breath_s: new StemLayer(), // wind / nature texture (separate from breath guide)
-      harmonic: new StemLayer(), // ambient pad — takes over from _chord when loaded
-      spatial:  new StemLayer(), // forest / rain (dominant natural layer)
-      morning:  new StemLayer(), // bright pad (morning_emergence only)
+      ground:   new StemLayer(),     // low-freq drone (muted — dungeon wrong for HRV)
+      breath_s: new StemLayerPair(), // wind/nature (prominent, benefits from rotation)
+      harmonic: new StemLayerPair(), // ambient pad (rotates as ANS shifts)
+      spatial:  new StemLayerPair(), // forest/rain (dominant natural layer, rotates)
+      morning:  new StemLayer(),     // bright pad (morning_emergence only)
     };
 
     this._currentPhase  = null;
@@ -192,7 +196,7 @@ export class SessionAudio {
     if (params.micro_variation !== undefined) this._organic.setVariationIntensity(params.micro_variation);
 
     // BPM → Tone.Transport (8s ramp — slow enough to avoid perceptible tempo jumps)
-    // Formula (backend): 60 + rmssd_norm×40 + arousal×10 → ISO principle: slow = calm
+    // Formula (backend): 55 + rmssd_norm×15 + arousal×8, capped 50-75 BPM therapeutic.
     const bpm = params.bpm ?? null;
     if (bpm !== null) {
       try { Tone.getTransport().bpm.rampTo(Math.max(40, Math.min(120, bpm)), 8); } catch (_) {}
@@ -201,6 +205,28 @@ export class SessionAudio {
     // Stem layer volumes driven by ANS scalars
     this._applyStemVolumesMusicParams(params);
     this._updateAlpha();
+    this._maybeRotateStems();
+  }
+
+  // ANS state → rotation bucket string for StemLayerPair selectStem()
+  _ansBucket() {
+    const a = this._ansState.arousal ?? 0.5;
+    if (a < 0.35)      return 'parasympathetic';
+    else if (a > 0.65) return 'sympathetic';
+    else               return 'transitioning';
+  }
+
+  // Trigger stem rotation across pair-backed layers. Pair has its own 2-min hold
+  // guard and skips if pool < 2 — safe to call every tick.
+  _maybeRotateStems() {
+    if (!this._stemsStarted) return;
+    const bucket = this._ansBucket();
+    ['breath_s', 'harmonic', 'spatial'].forEach(layer => {
+      const stem = this._stems[layer];
+      if (stem && typeof stem.rotate === 'function') {
+        stem.rotate(bucket, 3.0).catch(() => {}); // fire-and-forget
+      }
+    });
   }
 
   updateState(phase, polybioState, rmssdFalling) {
@@ -226,15 +252,26 @@ export class SessionAudio {
       if (!res.ok) throw new Error(`stems.json ${res.status}`);
       const manifest = await res.json();
 
+      // Populate rotation pools on pair-backed layers. Pool size 1 = rotation no-op.
+      this._stems.breath_s.setPool?.(manifest.breath?.stems  ?? []);
+      this._stems.harmonic.setPool?.(manifest.harmonic?.stems ?? []);
+      this._stems.spatial.setPool?.(manifest.spatial?.stems  ?? []);
+
+      // Initial-stem load. StemLayerPair.load matches StemLayer.load(buf) signature
+      // when called with an AudioBuffer + stemId. Pair tracks the id internally.
+      const breathInitial   = manifest.breath?.stems?.[0]?.id   ?? null;
+      const harmonicInitial = manifest.harmonic?.stems?.[0]?.id ?? null;
+      const spatialInitial  = manifest.spatial?.stems?.[0]?.id  ?? null;
+
       const loads = [
         stemLoader.load(manifest.ground?.url,   'ground')
           .then(buf => this._stems.ground.load(buf)),
         stemLoader.load(manifest.breath?.url,   'breath')
-          .then(buf => this._stems.breath_s.load(buf)),
+          .then(buf => this._stems.breath_s.load(buf, breathInitial)),
         stemLoader.load(manifest.harmonic?.url, 'harmonic')
-          .then(buf => this._stems.harmonic.load(buf)),
+          .then(buf => this._stems.harmonic.load(buf, harmonicInitial)),
         stemLoader.load(manifest.spatial?.url,  'spatial')
-          .then(buf => this._stems.spatial.load(buf)),
+          .then(buf => this._stems.spatial.load(buf, spatialInitial)),
         stemLoader.load(manifest.morning?.url,  'morning')
           .then(buf => this._stems.morning.load(buf)),
       ];
