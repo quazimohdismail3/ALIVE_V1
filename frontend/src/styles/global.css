@@ -258,7 +258,7 @@ input, textarea { font-family: inherit; }
   .nerve-mark { animation: none; }
   .screen {
     animation: none;
-    opacity: 1;
+    opacity: 1 !important;
     transform: none;
   }
 }
@@ -425,4 +425,43 @@ input, textarea { font-family: inherit; }
 @keyframes pulse-dot {
   0%, 100% { opacity: 1; }
   50%       { opacity: 0.3; }
+}
+
+/* ===========================================================
+   ANS cascade hooks (item 4) — JS not yet wired.
+   Session.jsx already sets <html data-ans="state_name">.
+   Future: also set data-ans-intensity="low|med|high" from confidence.
+   =========================================================== */
+
+@keyframes ansVentralVagal {
+  0%, 100% { filter: hue-rotate(0deg) saturate(1); }
+  50%      { filter: hue-rotate(-2deg) saturate(1.04); }
+}
+@keyframes ansHealthySympathetic {
+  0%, 100% { filter: hue-rotate(0deg) saturate(1); }
+  50%      { filter: hue-rotate(4deg) saturate(1.06); }
+}
+@keyframes ansAnxiousSympathetic {
+  0%, 100% { filter: hue-rotate(0deg) saturate(1); }
+  50%      { filter: hue-rotate(8deg) saturate(1.12); }
+}
+@keyframes ansDorsalVagal {
+  0%, 100% { filter: hue-rotate(0deg) saturate(0.94); }
+  50%      { filter: hue-rotate(-6deg) saturate(0.90); }
+}
+@keyframes ansBurnoutRigidity {
+  0%, 100% { filter: saturate(0.85) brightness(0.96); }
+  50%      { filter: saturate(0.82) brightness(0.94); }
+}
+
+/* Wired by data-ans-intensity (future). When intensity is "high", the
+   ambient-bg layer picks up the matching keyframe. No JS today. */
+html[data-ans="ventral_vagal"][data-ans-intensity="high"]       .ambient-bg { animation: ansVentralVagal       18s ease-in-out infinite; }
+html[data-ans="healthy_sympathetic"][data-ans-intensity="high"] .ambient-bg { animation: ansHealthySympathetic 14s ease-in-out infinite; }
+html[data-ans="anxious_sympathetic"][data-ans-intensity="high"] .ambient-bg { animation: ansAnxiousSympathetic 10s ease-in-out infinite; }
+html[data-ans="dorsal_vagal"][data-ans-intensity="high"]        .ambient-bg { animation: ansDorsalVagal        22s ease-in-out infinite; }
+html[data-ans="burnout_rigidity"][data-ans-intensity="high"]    .ambient-bg { animation: ansBurnoutRigidity    24s ease-in-out infinite; }
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-ans-intensity] .ambient-bg { animation: none !important; }
 }
