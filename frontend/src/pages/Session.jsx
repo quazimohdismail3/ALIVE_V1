@@ -240,8 +240,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
 
   // B4 fix: route on 't' in msg not msg.type === 'state_update'
   function handleWsMessage(msg) {
-    // TODO: incoming backend frames lack seq — add seq to backend emission for full stale-guard
-    // Stale-frame guard: drop out-of-order frames if backend ever adds seq to its emissions.
+    // Stale-frame guard: drop out-of-order frames (backend now emits seq on every session_frame).
     if (msg.seq !== undefined) {
       if (msg.seq <= lastSeqRef.current) return;
       lastSeqRef.current = msg.seq;
@@ -281,7 +280,7 @@ export default function Session({ cfg, onEnd, onDiscard }) {
       // Wire audio updates every frame
       if (audioRef.current?._started) {
         if (msg.rf_bpm) audioRef.current.updateRF(msg.rf_bpm);
-        if (msg.music_params) audioRef.current.updateMusicParams(msg.music_params, msg.affect);
+        if (msg.music_params) audioRef.current.updateMusicParams(msg.music_params, msg.affect, msg.state);
         if (msg.session_phase && msg.ans?.state) {
           audioRef.current.updateState(msg.session_phase, msg.ans.state, false);
         }

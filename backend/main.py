@@ -458,6 +458,7 @@ async def ws_session(
     # ============================================================
     # SESSION PHASE — normal closed-loop control
     # ============================================================
+    frame_seq = 0  # monotonic counter — frontend drops frames with seq <= last seen
     try:
         while True:
             cycle_t0 = time.time()
@@ -663,11 +664,12 @@ async def ws_session(
             # --- Emit frame
             await websocket.send_json({
                 "type": "session_frame",
+                "seq": frame_seq,
                 "t": elapsed,
                 "metrics": metrics.to_dict(),
                 "state": state.to_dict(),
                 "ans": {"state": ans.state, "confidence": ans.confidence, "actionable": ans.actionable},
-                "affect": {"arousal": affect.arousal, "valence": affect.valence, "quadrant": affect.quadrant},
+                "affect": {"arousal": (affect.arousal + 1.0) / 2.0, "valence": (affect.valence + 1.0) / 2.0, "quadrant": affect.quadrant},
                 "vs": vs_result,
                 "music_params": best_params,
                 "strategy": strategy,
@@ -681,6 +683,7 @@ async def ws_session(
                 "session_phase": current_phase,
                 "session_type": session_manager.state.session_type,
             })
+            frame_seq += 1
 
     except WebSocketDisconnect:
         pass
