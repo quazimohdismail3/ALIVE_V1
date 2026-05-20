@@ -96,4 +96,10 @@ graphify-out/
 .superpowers/
 .swarm/
 
+# Oversized stems (>30 MB) — download locally with scripts/download_stems.ps1
+# These load gracefully via stemLoader null-return; rotation works with remaining pool stems.
+frontend/public/stems/spatial/garden_music_ccby.mp3
+frontend/public/stems/harmonic/drone_in_d_ccby.mp3
+frontend/public/stems/breath/river_flute_ccby.mp3
+
 .vercel

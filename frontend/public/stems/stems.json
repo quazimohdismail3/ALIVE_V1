@@ -1,5 +1,5 @@
 {
-  "_note": "v2 schema — primary urls preserved for backward compatibility. stems[] array is for future A/B selection.",
+  "_note": "v2 schema — primary urls preserved for backward compatibility. stems[] array drives StemLayerPair rotation pool. Pool must have ≥2 entries for ANS-driven rotation to fire.",
   "_version": 2,
   "ground": {
     "url": "/stems/ground/dungeon_drone_cc0.ogg",
@@ -22,7 +22,11 @@
     "spectral_brightness": "mid",
     "tags": ["nature", "birds", "breath", "parasympathetic"],
     "stems": [
-      { "id": "breath_birds_001", "url": "/stems/breath/birds_wind_cc0.ogg", "energy": 0.25, "valence": 0.75, "license": "CC0" }
+      { "id": "breath_birds_001",       "url": "/stems/breath/birds_wind_cc0.ogg",    "energy": 0.25, "valence": 0.75, "license": "CC0" },
+      { "id": "breath_fresh_air_001",   "url": "/stems/breath/fresh_air_ccby.mp3",    "energy": 0.15, "valence": 0.80, "license": "CC-BY 3.0" },
+      { "id": "breath_soaring_001",     "url": "/stems/breath/soaring_ccby.mp3",      "energy": 0.20, "valence": 0.80, "license": "CC-BY 3.0" },
+      { "id": "breath_river_flute_001", "url": "/stems/breath/river_flute_ccby.mp3",  "energy": 0.20, "valence": 0.75, "license": "CC-BY 3.0" },
+      { "id": "breath_dreamer_001",     "url": "/stems/breath/dreamer_ccby.mp3",      "energy": 0.15, "valence": 0.70, "license": "CC-BY 3.0" }
     ]
   },
   "harmonic": {
@@ -34,7 +38,11 @@
     "spectral_brightness": "mid",
     "tags": ["pad", "harmonic", "parasympathetic", "ethereal"],
     "stems": [
-      { "id": "harmonic_ether_001", "url": "/stems/harmonic/ether_vox_ccby.mp3", "energy": 0.2, "valence": 0.7, "license": "CC-BY 3.0" }
+      { "id": "harmonic_ether_001",        "url": "/stems/harmonic/ether_vox_ccby.mp3",             "energy": 0.20, "valence": 0.70, "license": "CC-BY 3.0" },
+      { "id": "harmonic_infinite_001",     "url": "/stems/harmonic/infinite_perspective_ccby.mp3",  "energy": 0.15, "valence": 0.75, "license": "CC-BY 3.0" },
+      { "id": "harmonic_mesmerize_001",    "url": "/stems/harmonic/mesmerize_ccby.mp3",             "energy": 0.10, "valence": 0.75, "license": "CC-BY 3.0" },
+      { "id": "harmonic_drone_d_001",      "url": "/stems/harmonic/drone_in_d_ccby.mp3",            "energy": 0.10, "valence": 0.65, "license": "CC-BY 3.0" },
+      { "id": "harmonic_dream_catcher_001","url": "/stems/harmonic/dream_catcher_ccby.mp3",         "energy": 0.15, "valence": 0.80, "license": "CC-BY 3.0" }
     ]
   },
   "spatial": {
@@ -46,7 +54,11 @@
     "spectral_brightness": "mid",
     "tags": ["nature", "forest", "spatial", "parasympathetic"],
     "stems": [
-      { "id": "spatial_forest_001", "url": "/stems/spatial/forest_ambience_cc0.mp3", "energy": 0.2, "valence": 0.8, "license": "CC0" }
+      { "id": "spatial_forest_001",       "url": "/stems/spatial/forest_ambience_cc0.mp3",  "energy": 0.20, "valence": 0.80, "license": "CC0" },
+      { "id": "spatial_magic_forest_001", "url": "/stems/spatial/magic_forest_ccby.mp3",    "energy": 0.15, "valence": 0.75, "license": "CC-BY 3.0" },
+      { "id": "spatial_garden_001",       "url": "/stems/spatial/garden_music_ccby.mp3",    "energy": 0.15, "valence": 0.78, "license": "CC-BY 3.0" },
+      { "id": "spatial_myst_moor_001",    "url": "/stems/spatial/myst_on_moor_ccby.mp3",    "energy": 0.12, "valence": 0.65, "license": "CC-BY 3.0" },
+      { "id": "spatial_nightdreams_001",  "url": "/stems/spatial/nightdreams_ccby.mp3",     "energy": 0.10, "valence": 0.70, "license": "CC-BY 3.0" }
     ]
   },
   "morning": {
