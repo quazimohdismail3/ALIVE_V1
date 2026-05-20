@@ -89,5 +89,11 @@ frontend/e2e/.auth/
 .mcp.json
 .code_review_diff.txt
 .gstack/
+graphify-out/
+
+# AI agent tool directories
+.claude-flow/
+.superpowers/
+.swarm/
 
 .vercel
