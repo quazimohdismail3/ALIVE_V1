@@ -55,6 +55,7 @@ function AppRoutes() {
   useEffect(() => {
     if (screen === 'splash') return
     if (!user && screen !== 'login') setScreen('login')
+    if (user && screen === 'login') setScreen('profile-loading')
   }, [user, screen])
 
   const handleCalibrationReady = useCallback((readyCfg) => {

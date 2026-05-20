@@ -3,8 +3,8 @@ import { test, expect } from '@playwright/test';
 test.describe('Auth screen — unauthenticated', () => {
   test.beforeEach(async ({ page }) => {
     await page.goto('/');
-    // Landing page shows first — click "Sign in" to open login form
-    await page.getByRole('button', { name: 'Sign in' }).click();
+    // Splash (~1.5s) routes straight to LoginScreen; wait for form.
+    await page.waitForSelector('input[placeholder="Email"]', { timeout: 8000 });
   });
 
   test('shows ALIVE branding', async ({ page }) => {
@@ -13,9 +13,9 @@ test.describe('Auth screen — unauthenticated', () => {
   });
 
   test('sign-in tab active by default', async ({ page }) => {
-    const signInTab = page.getByRole('button', { name: 'Sign in' }).first();
-    await expect(signInTab).toBeVisible();
-    await expect(page.getByRole('button', { name: 'Sign in' }).last()).toBeVisible();
+    // Two "Sign in" buttons exist: tab toggle (type=button) + form submit (type=submit)
+    await expect(page.locator('button[type="button"]', { hasText: /^Sign in$/ })).toBeVisible();
+    await expect(page.locator('button[type="submit"]', { hasText: /Sign in/ })).toBeVisible();
   });
 
   test('sign-up tab switches form to Create account', async ({ page }) => {
