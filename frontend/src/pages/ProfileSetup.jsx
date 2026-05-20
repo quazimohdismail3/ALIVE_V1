@@ -59,9 +59,11 @@ export default function ProfileSetup({ onComplete }) {
       {current === 'sex' && (
         <Card>
           <h2>Biological sex</h2>
-          <p className={styles.subtle}>
-            Shapes your healthy heart-rhythm range — peer-reviewed norms (Umetani 1998, Nunan 2010).
-          </p>
+          <div style={{ marginTop: 4, marginBottom: 16 }}>
+            <p className={styles.subtle} style={{ margin: 0 }}>
+              Shapes your healthy heart-rhythm range — peer-reviewed norms (Umetani 1998, Nunan 2010).
+            </p>
+          </div>
           <SegmentedChoice
             options={[
               ['male', 'Male'],
