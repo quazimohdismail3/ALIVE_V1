@@ -87,8 +87,21 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
   const bleStatus = bleStatusProp ?? bleStatusCtx
 
   const SESSION_LIST = useMemo(() => getSessionList(), [])
-  const DEFAULT_SESSION_ID = SESSION_LIST[0].id
-  const DEFAULT_DURATION_S  = SESSION_LIST[0].durations[0].value
+
+  // Circadian-default: hour-of-day → recommended session id.
+  // 5–11h morning_emergence · 12–17h find_your_calm · 18–4h wind_down.
+  const RECOMMENDED_ID = useMemo(() => {
+    const h = new Date().getHours()
+    let id
+    if (h >= 5 && h <= 11) id = 'morning_emergence'
+    else if (h >= 12 && h <= 17) id = 'find_your_calm'
+    else id = 'wind_down'
+    // Confirm the candidate exists in the session list; else fall back.
+    return SESSION_LIST.some(s => s.id === id) ? id : SESSION_LIST[0].id
+  }, [SESSION_LIST])
+
+  const DEFAULT_SESSION_ID = RECOMMENDED_ID
+  const DEFAULT_DURATION_S = (SESSIONS[RECOMMENDED_ID]?.durations?.[0]?.value) ?? SESSION_LIST[0].durations[0].value
 
   const [sessions, setSessions]       = useState([])
   const [recs, setRecs]               = useState([])
@@ -101,7 +114,17 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
     ;(async () => {
       try {
         const [s, r] = await Promise.all([getSessions(5), getRecommendations()])
-        if (!cancelled) { setSessions(s); setRecs(r) }
+        if (!cancelled) {
+          setSessions(s); setRecs(r)
+          // Backend-recommended session takes precedence over circadian default.
+          try {
+            const recId = Array.isArray(r) ? r.find(x => x?.recommended_session_id)?.recommended_session_id : null
+            if (recId && SESSIONS[recId]) {
+              setSessionId(recId)
+              setDurationS(SESSIONS[recId].durations[0].value)
+            }
+          } catch (_) { /* defensive: ignore malformed recs */ }
+        }
       } catch (_) {
         // non-critical — dashboard still works without history
       } finally {
@@ -239,6 +262,17 @@ export default function Dashboard({ onStart, cfg, profile, bleStatus: bleStatusP
 
         {/* Session picker */}
         <div style={{ marginBottom: 24 }}>
+          {/* "Best for this time of day" — only when the circadian default actually fits the current hour */}
+          {badges[RECOMMENDED_ID]?.label === 'Best now' && (
+            <div style={{
+              display: 'inline-flex', alignItems: 'center', gap: 6,
+              fontSize: 10, color: '#00D084', letterSpacing: '0.08em',
+              textTransform: 'uppercase', marginBottom: 8, fontWeight: 600,
+            }}>
+              <div style={{ width: 5, height: 5, borderRadius: '50%', background: '#00D084' }} />
+              Best for this time of day
+            </div>
+          )}
           <div style={{ color: 'var(--text-dim)', fontSize: 11, textTransform: 'uppercase', letterSpacing: '0.08em', marginBottom: 12 }}>
             Session
           </div>
