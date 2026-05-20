@@ -5,9 +5,15 @@
 //          Lydian + Dorian modes only — no tritone intervals (psychoacoustic safety).
 import * as Tone from 'tone';
 
+// Index matches backend music_engine.key_mode: 0=Dorian (minor), 1=Ionian, 2=Lydian.
+// Pre-Fix 4 the table had only 2 entries and clamped to [0,1], so minor never played
+// (backend sends 0 when valence < 0). Dorian preferred over natural minor: minor 3rd
+// without the dominant pull of natural minor's b6 (Trost 2012 — modal scales for calm
+// sadness, no tritone tension).
 const SCALE_INTERVALS = [
-  [0, 4, 7, 11], // major 7th (Ionian/major — balanced)
-  [0, 4, 8, 11], // lydian maj7 (raised 4th — open, non-threatening)
+  [0, 3, 7, 10], // 0 = Dorian (minor 3rd, perfect 5th, minor 7th)
+  [0, 4, 7, 11], // 1 = Ionian maj7 (balanced major)
+  [0, 4, 8, 11], // 2 = Lydian maj7 (#11, open / non-threatening)
 ];
 
 // Spread voicing across two octaves — avoids muddy low cluster
@@ -36,7 +42,7 @@ export class ChordEngine {
   // Chord engine will remain at -60dB until activateFallback() is called.
   async start(rootHz = 256, keyMode = 1, _sessionType) {
     this._rootMidi = hzToMidi(rootHz);
-    this._keyMode  = Math.min(1, Math.max(0, Math.round(keyMode)));
+    this._keyMode  = Math.min(2, Math.max(0, Math.round(keyMode)));
 
     // IR convolver — warmer than algorithmic reverb when chord does activate
     this._reverb = new Tone.Convolver('/ir/forest.wav');
@@ -80,7 +86,7 @@ export class ChordEngine {
     let reVoice = false;
 
     if (keyMode !== undefined) {
-      const k = Math.min(1, Math.max(0, Math.round(keyMode)));
+      const k = Math.min(2, Math.max(0, Math.round(keyMode)));
       if (k !== this._keyMode) { this._keyMode = k; reVoice = true; }
     }
     if (rootHz !== undefined) {
