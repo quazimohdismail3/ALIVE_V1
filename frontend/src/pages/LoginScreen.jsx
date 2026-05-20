@@ -1,5 +1,6 @@
 import { useState } from 'react'
 import { supabase } from '../lib/supabase.js'
+import { mapAuthError } from '../lib/authErrors.js'
 
 export default function LoginScreen({ initialTab = 'login' }) {
   const [mode, setMode] = useState(initialTab) // 'login' | 'signup'
@@ -18,12 +19,12 @@ export default function LoginScreen({ initialTab = 'login' }) {
     if (mode === 'signup') {
       const { error } = await supabase.auth.signUp({ email, password })
       setLoading(false)
-      if (error) setError(error.message)
+      if (error) setError(mapAuthError(error))
       else setSignupDone(true)
     } else {
       const { error } = await supabase.auth.signInWithPassword({ email, password })
       setLoading(false)
-      if (error) setError(error.message)
+      if (error) setError(mapAuthError(error))
       // on success AuthContext fires onAuthStateChange → App re-renders to Landing
     }
   }
@@ -32,7 +33,7 @@ export default function LoginScreen({ initialTab = 'login' }) {
     if (!supabase) { setError('Supabase not configured.'); return }
     if (!email) { setError('Enter your email first.'); return }
     const { error } = await supabase.auth.resetPasswordForEmail(email)
-    if (error) setError(error.message)
+    if (error) setError(mapAuthError(error))
     else setResetSent(true)
   }
 
@@ -123,5 +124,5 @@ const tabStyle = {
 
 const tabActiveStyle = {
   ...tabStyle, background: 'var(--surface)', color: 'var(--text)',
-  borderColor: 'rgba(255,255,255,0.35)',
+  borderColor: 'rgba(255,255,255,0.55)',
 }
