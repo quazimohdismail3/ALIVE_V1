@@ -300,7 +300,14 @@ export class SessionAudio {
     const elapsed   = now - this._ansDirSince;
     const confirmMs = dir === 'away' ? CONFIRM_MS_STRESS : CONFIRM_MS_CALM;
     if (elapsed < confirmMs) return;
-    if (dir === 'toward') this._alpha = Math.min(0.6, this._alpha + 0.05);
+    // Arc-aware alpha ceiling: ENTRAIN meets the user gently (low α), SHIFT moves
+    // them, INTEGRATE locks them at the parasympathetic target. Was hard-capped at
+    // 0.6 so the full target was never reached in 30-45 min sessions.
+    // UNTUNED: re-validate progression curve against real Polar H10 (CLAUDE.md V2.1).
+    const aCap = this._arcPhase === 'INTEGRATE' ? 0.95
+               : this._arcPhase === 'SHIFT'     ? 0.80
+               :                                  0.50; // ENTRAIN
+    if (dir === 'toward') this._alpha = Math.min(aCap, this._alpha + 0.05);
     else                  this._alpha = Math.max(0.0, this._alpha - 0.1);
   }
 
