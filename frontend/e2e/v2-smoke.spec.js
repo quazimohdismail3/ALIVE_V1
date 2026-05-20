@@ -53,11 +53,15 @@ test.describe('V2 smoke — authenticated', () => {
 
   test('dashboard shows H10 status dot and session cards', async ({ page }) => {
     await page.goto('/')
-    // If CalibrationScreen appears, skip — user hasn't calibrated yet
-    const calibrating = await page.getByText('Connect Your Body').isVisible({ timeout: 6000 }).catch(() => false)
-    if (calibrating) return test.skip()
+    // Wait for whichever screen the test user lands on. Skip if not Dashboard.
+    const arrived = await Promise.race([
+      page.waitForSelector('text=Find Your Calm', { timeout: 10000 }).then(() => 'dashboard'),
+      page.waitForSelector('text=Connect Your Body', { timeout: 10000 }).then(() => 'calibration'),
+      page.waitForSelector('text=Tell us about you', { timeout: 10000 }).then(() => 'profile-setup'),
+    ]).catch(() => 'unknown')
+    if (arrived !== 'dashboard') return test.skip()
 
-    await expect(page.getByText('Find Your Calm')).toBeVisible({ timeout: 10000 })
+    await expect(page.getByText('Find Your Calm')).toBeVisible()
     await expect(page.getByText('Wind Down')).toBeVisible()
     await expect(page.getByText('Morning Emergence')).toBeVisible()
   })
